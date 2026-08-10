@@ -32,6 +32,17 @@ from rapidfuzz.distance import JaroWinkler
 
 
 def _wratio_score(query, candidate):
+    # WRatio's partial-ratio strategy treats a short candidate as trivially
+    # "contained" in a longer query -- a single character that merely
+    # appears somewhere in the query name scores ~90 regardless of
+    # relevance. That shows up in the source data as OCR-truncated
+    # one/two-letter name entries outranking genuine matches. Below that
+    # length, "candidate is a legitimate abbreviation of the query" (the
+    # premise partial-ratio relies on) doesn't hold, so fall back to plain
+    # ratio, which scores on the full strings with no such shortcut.
+    processed = utils.default_process(candidate) if candidate else ""
+    if len(processed) < 3:
+        return fuzz.ratio(query, candidate, processor=utils.default_process)
     return fuzz.WRatio(query, candidate, processor=utils.default_process)
 
 
