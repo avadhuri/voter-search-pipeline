@@ -1,20 +1,30 @@
 """
-Parse raw Karnataka CEO roll CSV(s) into a normalized SQLite database with
-an FTS5 index for search. Supports both a single AC (the original POC path)
-and combining many ACs into one database (for full-state coverage).
+Parse raw state roll files into one normalized, multi-state SQLite database
+with an FTS5 index for search. Supports a single AC (the original POC path),
+one state's ACs combined (the original --combine path, Karnataka-only), and
+multiple states combined into one DB (--states).
 
-Column parsing lives in states/karnataka.py (KarnatakaConnector.parse_raw)
-so this script and the download pipeline share one source of truth for the
-raw format.
+Column/row parsing lives in each states/<state>.py connector's parse_raw()
+so this script and the download pipeline share one source of truth for each
+state's raw format. states/registry.py maps a state_id to its connector
+class and where its raw files live, so this script doesn't hardcode that
+per state.
 
 Usage:
     build_db.py <raw_csv_path> <sqlite_db_path>
-        Build/overwrite a DB from a single AC's raw CSV (matches the
-        original POC's file naming, e.g. data/raw/A085.csv).
+        Build/overwrite a DB from a single Karnataka AC's raw CSV (matches
+        the original POC's file naming, e.g. data/raw/A085.csv).
 
     build_db.py --combine <raw_dir> <sqlite_db_path>
         Build/overwrite one combined DB from every "<AC_CODE>.csv" file in
-        <raw_dir> (as produced by scripts/download_2002_all.py).
+        <raw_dir> (as produced by scripts/download_2002_all.py). Karnataka
+        only -- kept as the original POC-regression path.
+
+    build_db.py --states karnataka,west_bengal <sqlite_db_path>
+        Build/overwrite one combined DB across every listed state, each
+        read from its states/registry.py raw_dir/raw_glob. This is what
+        the running app's DB_PATH should point at once more than one state
+        has data.
 """
 import glob
 import os
@@ -25,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from states.base import Constituency
 from states.karnataka import KarnatakaConnector
+from states.registry import STATE_CONNECTORS
 
 SCHEMA = """
 DROP TABLE IF EXISTS voters;
@@ -147,9 +158,46 @@ def build_combined(raw_dir, db_path, roll_year=2002):
     conn.close()
 
 
+def build_multi_state(state_ids, db_path, roll_year=2002):
+    """Build one DB combining every listed state's raw files, per
+    states/registry.py's connector class + raw_dir/raw_glob for each."""
+    unknown = [s for s in state_ids if s not in STATE_CONNECTORS]
+    if unknown:
+        raise SystemExit(f"Unknown state(s): {', '.join(unknown)}. Known: {', '.join(STATE_CONNECTORS)}")
+
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA)
+
+    grand_total = 0
+    for state_id in state_ids:
+        info = STATE_CONNECTORS[state_id]
+        connector = info["connector_cls"]()
+        ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
+        paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
+        state_total = 0
+        for path in paths:
+            ac_code = os.path.splitext(os.path.basename(path))[0]
+            ac = _resolve_ac(ac_code, ac_lookup)
+            with open(path, "rb") as f:
+                raw = f.read()
+            records = connector.parse_raw(raw, ac, roll_year)
+            conn.executemany(INSERT_SQL, _records_to_rows(records))
+            state_total += len(records)
+            print(f"  [{state_id}] {ac_code}: {len(records)} records")
+        print(f"{state_id}: {state_total} records from {len(paths)} files")
+        grand_total += state_total
+
+    _finalize(conn)
+    check_total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
+    print(f"\nLoaded {check_total} records across {len(state_ids)} state(s) into {db_path}.")
+    conn.close()
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--combine":
         build_combined(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 4 and sys.argv[1] == "--states":
+        build_multi_state(sys.argv[2].split(","), sys.argv[3])
     elif len(sys.argv) == 3:
         build_single(sys.argv[1], sys.argv[2])
     else:
