@@ -27,16 +27,18 @@ number:
 Neither is silently "better" -- they fail differently, which is why both are
 exposed as an explicit user choice instead of averaged into a single score.
 """
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, utils
 from rapidfuzz.distance import JaroWinkler
 
 
 def _wratio_score(query, candidate):
-    return fuzz.WRatio(query, candidate)
+    return fuzz.WRatio(query, candidate, processor=utils.default_process)
 
 
 def _jaro_winkler_score(query, candidate):
-    return JaroWinkler.normalized_similarity(query, candidate) * 100
+    return JaroWinkler.normalized_similarity(
+        utils.default_process(query), utils.default_process(candidate)
+    ) * 100
 
 
 ALGORITHMS = {

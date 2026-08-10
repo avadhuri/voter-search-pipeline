@@ -43,7 +43,8 @@ CREATE TABLE voters (
     relation_code TEXT,
     relation_label TEXT,
     age INTEGER,
-    gender TEXT
+    gender TEXT,
+    remark TEXT
 );
 """
 
@@ -51,11 +52,24 @@ INSERT_SQL = """
 INSERT INTO voters (
     state, roll_year, district, ac_code, ac_name, part_no, serial_no,
     local_ref, full_name, full_relative_name, relation_code,
-    relation_label, age, gender
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    relation_label, age, gender, remark
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
+
+
+def _load_ac_lookup():
+    """ac_code -> Constituency, from data/ac_meta.json (via the connector's
+    own loader, so this and list_constituencies() can't drift)."""
+    return {ac.ac_code: ac for ac in KarnatakaConnector().list_constituencies()}
+
+
+def _resolve_ac(ac_code, ac_lookup):
+    """Known AC -> its real metadata; unknown code (shouldn't happen given
+    filenames come from ac_meta.json in the first place) -> blank fields,
+    same as the old behavior, rather than raising."""
+    return ac_lookup.get(ac_code) or Constituency(ac_code=ac_code, ac_name="", district="")
 
 
 def _records_to_rows(records):
@@ -65,7 +79,7 @@ def _records_to_rows(records):
             r.part_no, r.serial_no, r.local_ref, r.full_name,
             r.full_relative_name, r.relation_code,
             RELATION_LABELS.get(r.relation_code, r.relation_code),
-            r.age, r.gender,
+            r.age, r.gender, r.remark,
         )
         for r in records
     ]
@@ -92,7 +106,7 @@ def build_single(raw_csv_path, db_path, roll_year=2002):
     """Build a DB from one AC's raw CSV, inferring ac_code from the filename."""
     ac_code = os.path.splitext(os.path.basename(raw_csv_path))[0]
     connector = KarnatakaConnector()
-    ac = Constituency(ac_code=ac_code, ac_name="", district="")
+    ac = _resolve_ac(ac_code, _load_ac_lookup())
 
     with open(raw_csv_path, "rb") as f:
         raw = f.read()
@@ -111,6 +125,7 @@ def build_single(raw_csv_path, db_path, roll_year=2002):
 def build_combined(raw_dir, db_path, roll_year=2002):
     """Build one DB from every <AC_CODE>.csv file in raw_dir."""
     connector = KarnatakaConnector()
+    ac_lookup = _load_ac_lookup()
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
 
@@ -118,7 +133,7 @@ def build_combined(raw_dir, db_path, roll_year=2002):
     total = 0
     for path in csv_paths:
         ac_code = os.path.splitext(os.path.basename(path))[0]
-        ac = Constituency(ac_code=ac_code, ac_name="", district="")
+        ac = _resolve_ac(ac_code, ac_lookup)
         with open(path, "rb") as f:
             raw = f.read()
         records = connector.parse_raw(raw, ac, roll_year)

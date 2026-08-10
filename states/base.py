@@ -42,6 +42,7 @@ class VoterRecord:
     age: int
     gender: str
     roll_year: int          # e.g. 2002 or 2025
+    remark: str = ""        # human-readable note on any source-data quirk in this row
 
 
 class StateConnector:
