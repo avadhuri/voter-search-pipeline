@@ -1,0 +1,27 @@
+# Only needed to run scripts/eval_embeddings.py (the embedding-vs-rapidfuzz
+# benchmark). Deliberately kept OUT of requirements.txt: torch alone is
+# ~75MB and pulls a scientific-computing stack that has no reason to be on
+# the production app's small VM -- the embedding layer ships in the app
+# only if this benchmark says it wins.
+#
+# Install with: venv/bin/pip install -r requirements-eval.txt
+filelock==3.19.1
+fsspec==2025.10.0
+hf-xet==1.6.0
+huggingface_hub==0.36.2
+joblib==1.5.3
+mpmath==1.3.0
+networkx==3.2.1
+numpy==2.0.2
+PyYAML==6.0.3
+regex==2026.1.15
+safetensors==0.7.0
+scikit-learn==1.6.1
+scipy==1.13.1
+sentence-transformers==5.1.2
+sympy==1.14.0
+threadpoolctl==3.6.0
+tokenizers==0.22.2
+torch==2.8.0
+tqdm==4.70.0
+transformers==4.57.6
