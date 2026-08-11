@@ -74,7 +74,7 @@ RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Gua
 
 
 def _load_ac_lookup():
-    """ac_code -> Constituency, from data/ac_meta.json (via the connector's
+    """ac_code -> Constituency, from states/meta/ac_meta.json (via the connector's
     own loader, so this and list_constituencies() can't drift)."""
     return {ac.ac_code: ac for ac in KarnatakaConnector().list_constituencies()}
 

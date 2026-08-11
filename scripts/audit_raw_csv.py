@@ -16,7 +16,7 @@ from collections import Counter, defaultdict
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = os.path.join(BASE_DIR, "data", "raw")
-AC_META_PATH = os.path.join(BASE_DIR, "data", "ac_meta.json")
+AC_META_PATH = os.path.join(BASE_DIR, "states", "meta", "ac_meta.json")
 
 with open(AC_META_PATH, encoding="utf-8") as f:
     ac_meta = {row["ac_code"]: row for row in json.load(f)}

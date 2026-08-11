@@ -1,0 +1,1570 @@
+[
+ {
+  "id": 1,
+  "district": "BIDAR",
+  "ac_code": "A001",
+  "ac_name": "Aurad",
+  "total_parts": 188
+ },
+ {
+  "id": 2,
+  "district": "BIDAR",
+  "ac_code": "A002",
+  "ac_name": "Bhalki",
+  "total_parts": 164
+ },
+ {
+  "id": 3,
+  "district": "BIDAR",
+  "ac_code": "A003",
+  "ac_name": "Hulsoor",
+  "total_parts": 166
+ },
+ {
+  "id": 4,
+  "district": "BIDAR",
+  "ac_code": "A004",
+  "ac_name": "Bidar",
+  "total_parts": 212
+ },
+ {
+  "id": 5,
+  "district": "BIDAR",
+  "ac_code": "A005",
+  "ac_name": "Humnabad",
+  "total_parts": 172
+ },
+ {
+  "id": 6,
+  "district": "BIDAR",
+  "ac_code": "A006",
+  "ac_name": "Basavakalyan",
+  "total_parts": 194
+ },
+ {
+  "id": 7,
+  "district": "GULBARGA",
+  "ac_code": "A007",
+  "ac_name": "Chincholi",
+  "total_parts": 185
+ },
+ {
+  "id": 8,
+  "district": "GULBARGA",
+  "ac_code": "A008",
+  "ac_name": "Kamalapur",
+  "total_parts": 166
+ },
+ {
+  "id": 9,
+  "district": "GULBARGA",
+  "ac_code": "A009",
+  "ac_name": "Aland",
+  "total_parts": 165
+ },
+ {
+  "id": 10,
+  "district": "GULBARGA",
+  "ac_code": "A010",
+  "ac_name": "Gulbarga",
+  "total_parts": 272
+ },
+ {
+  "id": 11,
+  "district": "GULBARGA",
+  "ac_code": "A011",
+  "ac_name": "Shahabad",
+  "total_parts": 217
+ },
+ {
+  "id": 12,
+  "district": "GULBARGA",
+  "ac_code": "A012",
+  "ac_name": "Afzalpur",
+  "total_parts": 188
+ },
+ {
+  "id": 13,
+  "district": "GULBARGA",
+  "ac_code": "A013",
+  "ac_name": "Chittapur",
+  "total_parts": 159
+ },
+ {
+  "id": 14,
+  "district": "GULBARGA",
+  "ac_code": "A014",
+  "ac_name": "Sedam",
+  "total_parts": 173
+ },
+ {
+  "id": 15,
+  "district": "GULBARGA",
+  "ac_code": "A015",
+  "ac_name": "Jevargi",
+  "total_parts": 198
+ },
+ {
+  "id": 16,
+  "district": "GULBARGA",
+  "ac_code": "A016",
+  "ac_name": "Gurmitkal",
+  "total_parts": 156
+ },
+ {
+  "id": 17,
+  "district": "GULBARGA",
+  "ac_code": "A017",
+  "ac_name": "Yadgir",
+  "total_parts": 173
+ },
+ {
+  "id": 18,
+  "district": "GULBARGA",
+  "ac_code": "A018",
+  "ac_name": "Shahapur",
+  "total_parts": 208
+ },
+ {
+  "id": 19,
+  "district": "GULBARGA",
+  "ac_code": "A019",
+  "ac_name": "Shorapur",
+  "total_parts": 197
+ },
+ {
+  "id": 20,
+  "district": "RAICHUR",
+  "ac_code": "A020",
+  "ac_name": "Devadurga",
+  "total_parts": 187
+ },
+ {
+  "id": 21,
+  "district": "RAICHUR",
+  "ac_code": "A021",
+  "ac_name": "Raichur",
+  "total_parts": 190
+ },
+ {
+  "id": 22,
+  "district": "RAICHUR",
+  "ac_code": "A022",
+  "ac_name": "Kalmala",
+  "total_parts": 197
+ },
+ {
+  "id": 23,
+  "district": "RAICHUR",
+  "ac_code": "A023",
+  "ac_name": "Manvi",
+  "total_parts": 177
+ },
+ {
+  "id": 24,
+  "district": "RAICHUR",
+  "ac_code": "A024",
+  "ac_name": "Lingsugur",
+  "total_parts": 185
+ },
+ {
+  "id": 25,
+  "district": "RAICHUR",
+  "ac_code": "A025",
+  "ac_name": "Sindhanur",
+  "total_parts": 221
+ },
+ {
+  "id": 26,
+  "district": "KOPPAL",
+  "ac_code": "A026",
+  "ac_name": "Kushtagi",
+  "total_parts": 193
+ },
+ {
+  "id": 27,
+  "district": "KOPPAL",
+  "ac_code": "A027",
+  "ac_name": "Yelburga",
+  "total_parts": 172
+ },
+ {
+  "id": 28,
+  "district": "KOPPAL",
+  "ac_code": "A028",
+  "ac_name": "Kanakagiri",
+  "total_parts": 201
+ },
+ {
+  "id": 29,
+  "district": "KOPPAL",
+  "ac_code": "A029",
+  "ac_name": "Gangawati",
+  "total_parts": 192
+ },
+ {
+  "id": 30,
+  "district": "KOPPAL",
+  "ac_code": "A030",
+  "ac_name": "Koppal",
+  "total_parts": 183
+ },
+ {
+  "id": 31,
+  "district": "BELLARY",
+  "ac_code": "A031",
+  "ac_name": "Siruguppa",
+  "total_parts": 220
+ },
+ {
+  "id": 32,
+  "district": "BELLARY",
+  "ac_code": "A032",
+  "ac_name": "Kurugodu",
+  "total_parts": 200
+ },
+ {
+  "id": 33,
+  "district": "BELLARY",
+  "ac_code": "A033",
+  "ac_name": "Bellary",
+  "total_parts": 210
+ },
+ {
+  "id": 34,
+  "district": "BELLARY",
+  "ac_code": "A034",
+  "ac_name": "Hospet",
+  "total_parts": 180
+ },
+ {
+  "id": 35,
+  "district": "BELLARY",
+  "ac_code": "A035",
+  "ac_name": "Sandur",
+  "total_parts": 154
+ },
+ {
+  "id": 36,
+  "district": "BELLARY",
+  "ac_code": "A036",
+  "ac_name": "Kudligi",
+  "total_parts": 174
+ },
+ {
+  "id": 37,
+  "district": "BELLARY",
+  "ac_code": "A037",
+  "ac_name": "Kottur",
+  "total_parts": 156
+ },
+ {
+  "id": 38,
+  "district": "BELLARY",
+  "ac_code": "A038",
+  "ac_name": "Hadagali",
+  "total_parts": 165
+ },
+ {
+  "id": 39,
+  "district": "DAVANGERE",
+  "ac_code": "A039",
+  "ac_name": "Harapanahalli",
+  "total_parts": 180
+ },
+ {
+  "id": 40,
+  "district": "DAVANGERE",
+  "ac_code": "A040",
+  "ac_name": "Harihar",
+  "total_parts": 179
+ },
+ {
+  "id": 41,
+  "district": "DAVANGERE",
+  "ac_code": "A041",
+  "ac_name": "Davanagere",
+  "total_parts": 204
+ },
+ {
+  "id": 42,
+  "district": "DAVANGERE",
+  "ac_code": "A042",
+  "ac_name": "Mayakonda",
+  "total_parts": 201
+ },
+ {
+  "id": 43,
+  "district": "CHITRADURGA",
+  "ac_code": "A043",
+  "ac_name": "Bharamasagara",
+  "total_parts": 183
+ },
+ {
+  "id": 44,
+  "district": "CHITRADURGA",
+  "ac_code": "A044",
+  "ac_name": "Chitradurga",
+  "total_parts": 189
+ },
+ {
+  "id": 45,
+  "district": "DAVANGERE",
+  "ac_code": "A045",
+  "ac_name": "Jagalur",
+  "total_parts": 219
+ },
+ {
+  "id": 46,
+  "district": "CHITRADURGA",
+  "ac_code": "A046",
+  "ac_name": "Molakalmuru",
+  "total_parts": 164
+ },
+ {
+  "id": 47,
+  "district": "CHITRADURGA",
+  "ac_code": "A047",
+  "ac_name": "Challakere",
+  "total_parts": 186
+ },
+ {
+  "id": 48,
+  "district": "CHITRADURGA",
+  "ac_code": "A048",
+  "ac_name": "Hiriyur",
+  "total_parts": 171
+ },
+ {
+  "id": 49,
+  "district": "CHITRADURGA",
+  "ac_code": "A049",
+  "ac_name": "Holalkere",
+  "total_parts": 180
+ },
+ {
+  "id": 50,
+  "district": "CHITRADURGA",
+  "ac_code": "A050",
+  "ac_name": "Hosadurga",
+  "total_parts": 200
+ },
+ {
+  "id": 51,
+  "district": "TUMKUR",
+  "ac_code": "A051",
+  "ac_name": "Pavagada",
+  "total_parts": 214
+ },
+ {
+  "id": 52,
+  "district": "TUMKUR",
+  "ac_code": "A052",
+  "ac_name": "Sira",
+  "total_parts": 192
+ },
+ {
+  "id": 53,
+  "district": "TUMKUR",
+  "ac_code": "A053",
+  "ac_name": "Kalambella",
+  "total_parts": 168
+ },
+ {
+  "id": 54,
+  "district": "TUMKUR",
+  "ac_code": "A054",
+  "ac_name": "Bellavi",
+  "total_parts": 176
+ },
+ {
+  "id": 55,
+  "district": "TUMKUR",
+  "ac_code": "A055",
+  "ac_name": "Madhugiri",
+  "total_parts": 193
+ },
+ {
+  "id": 56,
+  "district": "TUMKUR",
+  "ac_code": "A056",
+  "ac_name": "Koratagere",
+  "total_parts": 187
+ },
+ {
+  "id": 57,
+  "district": "TUMKUR",
+  "ac_code": "A057",
+  "ac_name": "Tumkur",
+  "total_parts": 260
+ },
+ {
+  "id": 58,
+  "district": "TUMKUR",
+  "ac_code": "A058",
+  "ac_name": "Kunigal",
+  "total_parts": 186
+ },
+ {
+  "id": 59,
+  "district": "TUMKUR",
+  "ac_code": "A059",
+  "ac_name": "Huliyurdurga",
+  "total_parts": 163
+ },
+ {
+  "id": 60,
+  "district": "TUMKUR",
+  "ac_code": "A060",
+  "ac_name": "Gubbi",
+  "total_parts": 171
+ },
+ {
+  "id": 61,
+  "district": "TUMKUR",
+  "ac_code": "A061",
+  "ac_name": "Turuvekere",
+  "total_parts": 169
+ },
+ {
+  "id": 62,
+  "district": "TUMKUR",
+  "ac_code": "A062",
+  "ac_name": "Tiptur",
+  "total_parts": 188
+ },
+ {
+  "id": 63,
+  "district": "TUMKUR",
+  "ac_code": "A063",
+  "ac_name": "Chikkanayakanahalli",
+  "total_parts": 161
+ },
+ {
+  "id": 64,
+  "district": "KOLAR",
+  "ac_code": "A064",
+  "ac_name": "Gauribidanur",
+  "total_parts": 177
+ },
+ {
+  "id": 65,
+  "district": "KOLAR",
+  "ac_code": "A065",
+  "ac_name": "Chikballapur",
+  "total_parts": 170
+ },
+ {
+  "id": 66,
+  "district": "KOLAR",
+  "ac_code": "A066",
+  "ac_name": "Sidlaghatta",
+  "total_parts": 180
+ },
+ {
+  "id": 67,
+  "district": "KOLAR",
+  "ac_code": "A067",
+  "ac_name": "Bagepalli",
+  "total_parts": 181
+ },
+ {
+  "id": 68,
+  "district": "KOLAR",
+  "ac_code": "A068",
+  "ac_name": "Chintamani",
+  "total_parts": 194
+ },
+ {
+  "id": 69,
+  "district": "KOLAR",
+  "ac_code": "A069",
+  "ac_name": "Srinivasapur",
+  "total_parts": 168
+ },
+ {
+  "id": 70,
+  "district": "KOLAR",
+  "ac_code": "A070",
+  "ac_name": "Mulbagal",
+  "total_parts": 203
+ },
+ {
+  "id": 71,
+  "district": "KOLAR",
+  "ac_code": "A071",
+  "ac_name": "Kolar Gold Field",
+  "total_parts": 159
+ },
+ {
+  "id": 72,
+  "district": "KOLAR",
+  "ac_code": "A072",
+  "ac_name": "Bethamangala",
+  "total_parts": 204
+ },
+ {
+  "id": 73,
+  "district": "KOLAR",
+  "ac_code": "A073",
+  "ac_name": "Kolar",
+  "total_parts": 191
+ },
+ {
+  "id": 74,
+  "district": "KOLAR",
+  "ac_code": "A074",
+  "ac_name": "Vemagal",
+  "total_parts": 180
+ },
+ {
+  "id": 75,
+  "district": "KOLAR",
+  "ac_code": "A075",
+  "ac_name": "Malur",
+  "total_parts": 166
+ },
+ {
+  "id": 76,
+  "district": "BBMP",
+  "ac_code": "A076",
+  "ac_name": "Malleshwaram",
+  "total_parts": 196
+ },
+ {
+  "id": 77,
+  "district": "BBMP",
+  "ac_code": "A077",
+  "ac_name": "Rajaji Nagar",
+  "total_parts": 313
+ },
+ {
+  "id": 78,
+  "district": "BBMP",
+  "ac_code": "A078",
+  "ac_name": "Gandhi Nagar",
+  "total_parts": 115
+ },
+ {
+  "id": 79,
+  "district": "BBMP",
+  "ac_code": "A079",
+  "ac_name": "Chickpet",
+  "total_parts": 109
+ },
+ {
+  "id": 80,
+  "district": "BBMP",
+  "ac_code": "A080",
+  "ac_name": "Binnypet",
+  "total_parts": 352
+ },
+ {
+  "id": 81,
+  "district": "BBMP",
+  "ac_code": "A081",
+  "ac_name": "Chamrajpet",
+  "total_parts": 123
+ },
+ {
+  "id": 82,
+  "district": "BBMP",
+  "ac_code": "A082",
+  "ac_name": "Basavanagudi",
+  "total_parts": 196
+ },
+ {
+  "id": 83,
+  "district": "BBMP",
+  "ac_code": "A083",
+  "ac_name": "Jayanagar",
+  "total_parts": 294
+ },
+ {
+  "id": 84,
+  "district": "BBMP",
+  "ac_code": "A084",
+  "ac_name": "Shanti Nagar",
+  "total_parts": 182
+ },
+ {
+  "id": 85,
+  "district": "BBMP",
+  "ac_code": "A085",
+  "ac_name": "Shivajinagar",
+  "total_parts": 104
+ },
+ {
+  "id": 86,
+  "district": "BBMP",
+  "ac_code": "A086",
+  "ac_name": "Bharathinagar",
+  "total_parts": 134
+ },
+ {
+  "id": 87,
+  "district": "BBMP",
+  "ac_code": "A087",
+  "ac_name": "Jayamahal",
+  "total_parts": 197
+ },
+ {
+  "id": 88,
+  "district": "BANGALORE URBAN",
+  "ac_code": "A088",
+  "ac_name": "Yelahanka",
+  "total_parts": 526
+ },
+ {
+  "id": 89,
+  "district": "BANGALORE URBAN",
+  "ac_code": "A089",
+  "ac_name": "Uttarahalli",
+  "total_parts": 1104
+ },
+ {
+  "id": 90,
+  "district": "BANGALORE URBAN",
+  "ac_code": "A090",
+  "ac_name": "Varthur",
+  "total_parts": 415
+ },
+ {
+  "id": 91,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A091",
+  "ac_name": "Kanakapura",
+  "total_parts": 199
+ },
+ {
+  "id": 92,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A092",
+  "ac_name": "Sathanur",
+  "total_parts": 199
+ },
+ {
+  "id": 93,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A093",
+  "ac_name": "Channapatna",
+  "total_parts": 174
+ },
+ {
+  "id": 94,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A094",
+  "ac_name": "Ramanagar",
+  "total_parts": 234
+ },
+ {
+  "id": 95,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A095",
+  "ac_name": "Magadi",
+  "total_parts": 210
+ },
+ {
+  "id": 96,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A096",
+  "ac_name": "Nelamangala",
+  "total_parts": 193
+ },
+ {
+  "id": 97,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A097",
+  "ac_name": "Doddaballapur",
+  "total_parts": 194
+ },
+ {
+  "id": 98,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A098",
+  "ac_name": "Devanahalli",
+  "total_parts": 218
+ },
+ {
+  "id": 99,
+  "district": "BANGALORE RURAL",
+  "ac_code": "A099",
+  "ac_name": "Hosakote",
+  "total_parts": 247
+ },
+ {
+  "id": 100,
+  "district": "BANGALORE URBAN",
+  "ac_code": "A100",
+  "ac_name": "Anekal",
+  "total_parts": 249
+ },
+ {
+  "id": 101,
+  "district": "MANDYA",
+  "ac_code": "A101",
+  "ac_name": "Nagamangala",
+  "total_parts": 188
+ },
+ {
+  "id": 102,
+  "district": "MANDYA",
+  "ac_code": "A102",
+  "ac_name": "Maddur",
+  "total_parts": 168
+ },
+ {
+  "id": 103,
+  "district": "MANDYA",
+  "ac_code": "A103",
+  "ac_name": "Kiragaval",
+  "total_parts": 165
+ },
+ {
+  "id": 104,
+  "district": "MANDYA",
+  "ac_code": "A104",
+  "ac_name": "Malavalli",
+  "total_parts": 187
+ },
+ {
+  "id": 105,
+  "district": "MANDYA",
+  "ac_code": "A105",
+  "ac_name": "Mandya",
+  "total_parts": 196
+ },
+ {
+  "id": 106,
+  "district": "MANDYA",
+  "ac_code": "A106",
+  "ac_name": "Keragodu",
+  "total_parts": 150
+ },
+ {
+  "id": 107,
+  "district": "MANDYA",
+  "ac_code": "A107",
+  "ac_name": "Shrirangapattana",
+  "total_parts": 194
+ },
+ {
+  "id": 108,
+  "district": "MANDYA",
+  "ac_code": "A108",
+  "ac_name": "Pandavapura",
+  "total_parts": 201
+ },
+ {
+  "id": 109,
+  "district": "MANDYA",
+  "ac_code": "A109",
+  "ac_name": "Krishnarajpete",
+  "total_parts": 192
+ },
+ {
+  "id": 110,
+  "district": "CHAMARAJANAGAR",
+  "ac_code": "A110",
+  "ac_name": "Hanur",
+  "total_parts": 196
+ },
+ {
+  "id": 111,
+  "district": "CHAMARAJANAGAR",
+  "ac_code": "A111",
+  "ac_name": "Kollegal",
+  "total_parts": 172
+ },
+ {
+  "id": 112,
+  "district": "MYSORE",
+  "ac_code": "A112",
+  "ac_name": "Bannur",
+  "total_parts": 158
+ },
+ {
+  "id": 113,
+  "district": "MYSORE",
+  "ac_code": "A113",
+  "ac_name": "T. Narasipur",
+  "total_parts": 171
+ },
+ {
+  "id": 114,
+  "district": "MYSORE",
+  "ac_code": "A114",
+  "ac_name": "Krishnaraja",
+  "total_parts": 147
+ },
+ {
+  "id": 115,
+  "district": "MYSORE",
+  "ac_code": "A115",
+  "ac_name": "Chamaraja",
+  "total_parts": 204
+ },
+ {
+  "id": 116,
+  "district": "MYSORE",
+  "ac_code": "A116",
+  "ac_name": "Narasimharaja",
+  "total_parts": 243
+ },
+ {
+  "id": 117,
+  "district": "MYSORE",
+  "ac_code": "A117",
+  "ac_name": "Chamundeshwari",
+  "total_parts": 286
+ },
+ {
+  "id": 118,
+  "district": "MYSORE",
+  "ac_code": "A118",
+  "ac_name": "Nanjangud",
+  "total_parts": 160
+ },
+ {
+  "id": 119,
+  "district": "CHAMARAJANAGAR",
+  "ac_code": "A119",
+  "ac_name": "Santhemarahalli",
+  "total_parts": 154
+ },
+ {
+  "id": 120,
+  "district": "CHAMARAJANAGAR",
+  "ac_code": "A120",
+  "ac_name": "Chamarajanagar",
+  "total_parts": 199
+ },
+ {
+  "id": 121,
+  "district": "CHAMARAJANAGAR",
+  "ac_code": "A121",
+  "ac_name": "Gundlupet",
+  "total_parts": 187
+ },
+ {
+  "id": 122,
+  "district": "MYSORE",
+  "ac_code": "A122",
+  "ac_name": "Heggadadevankote",
+  "total_parts": 196
+ },
+ {
+  "id": 123,
+  "district": "MYSORE",
+  "ac_code": "A123",
+  "ac_name": "Hunsur",
+  "total_parts": 210
+ },
+ {
+  "id": 124,
+  "district": "MYSORE",
+  "ac_code": "A124",
+  "ac_name": "Krishnarajanagara",
+  "total_parts": 179
+ },
+ {
+  "id": 125,
+  "district": "MYSORE",
+  "ac_code": "A125",
+  "ac_name": "Periyapatna",
+  "total_parts": 208
+ },
+ {
+  "id": 126,
+  "district": "KODAGU",
+  "ac_code": "A126",
+  "ac_name": "Virajpet",
+  "total_parts": 153
+ },
+ {
+  "id": 127,
+  "district": "KODAGU",
+  "ac_code": "A127",
+  "ac_name": "Madikeri",
+  "total_parts": 182
+ },
+ {
+  "id": 128,
+  "district": "KODAGU",
+  "ac_code": "A128",
+  "ac_name": "Somwarpet",
+  "total_parts": 176
+ },
+ {
+  "id": 129,
+  "district": "HASSAN",
+  "ac_code": "A129",
+  "ac_name": "Belur",
+  "total_parts": 172
+ },
+ {
+  "id": 130,
+  "district": "HASSAN",
+  "ac_code": "A130",
+  "ac_name": "Arsikere",
+  "total_parts": 200
+ },
+ {
+  "id": 131,
+  "district": "HASSAN",
+  "ac_code": "A131",
+  "ac_name": "Gandasi",
+  "total_parts": 187
+ },
+ {
+  "id": 132,
+  "district": "HASSAN",
+  "ac_code": "A132",
+  "ac_name": "Shravanabelagola",
+  "total_parts": 243
+ },
+ {
+  "id": 133,
+  "district": "HASSAN",
+  "ac_code": "A133",
+  "ac_name": "Holenarasipur",
+  "total_parts": 204
+ },
+ {
+  "id": 134,
+  "district": "HASSAN",
+  "ac_code": "A134",
+  "ac_name": "Arkalgud",
+  "total_parts": 175
+ },
+ {
+  "id": 135,
+  "district": "HASSAN",
+  "ac_code": "A135",
+  "ac_name": "Hassan",
+  "total_parts": 255
+ },
+ {
+  "id": 136,
+  "district": "HASSAN",
+  "ac_code": "A136",
+  "ac_name": "Sakleshpur",
+  "total_parts": 220
+ },
+ {
+  "id": 137,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A137",
+  "ac_name": "Sullia",
+  "total_parts": 190
+ },
+ {
+  "id": 138,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A138",
+  "ac_name": "Puttur",
+  "total_parts": 194
+ },
+ {
+  "id": 139,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A139",
+  "ac_name": "Vittla",
+  "total_parts": 190
+ },
+ {
+  "id": 140,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A140",
+  "ac_name": "Belthangady",
+  "total_parts": 198
+ },
+ {
+  "id": 141,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A141",
+  "ac_name": "Bantval",
+  "total_parts": 158
+ },
+ {
+  "id": 142,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A142",
+  "ac_name": "Mangalore",
+  "total_parts": 126
+ },
+ {
+  "id": 143,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A143",
+  "ac_name": "Ullal",
+  "total_parts": 172
+ },
+ {
+  "id": 144,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A144",
+  "ac_name": "Surathkal",
+  "total_parts": 199
+ },
+ {
+  "id": 145,
+  "district": "UDUPI",
+  "ac_code": "A145",
+  "ac_name": "Kapu",
+  "total_parts": 141
+ },
+ {
+  "id": 146,
+  "district": "UDUPI",
+  "ac_code": "A146",
+  "ac_name": "Udupi",
+  "total_parts": 170
+ },
+ {
+  "id": 147,
+  "district": "UDUPI",
+  "ac_code": "A147",
+  "ac_name": "Brahmavar",
+  "total_parts": 185
+ },
+ {
+  "id": 148,
+  "district": "UDUPI",
+  "ac_code": "A148",
+  "ac_name": "Kundapura",
+  "total_parts": 196
+ },
+ {
+  "id": 149,
+  "district": "UDUPI",
+  "ac_code": "A149",
+  "ac_name": "Byndoor",
+  "total_parts": 179
+ },
+ {
+  "id": 150,
+  "district": "UDUPI",
+  "ac_code": "A150",
+  "ac_name": "Karkala",
+  "total_parts": 166
+ },
+ {
+  "id": 151,
+  "district": "DAKSHINA KANNADA",
+  "ac_code": "A151",
+  "ac_name": "Moodabidri",
+  "total_parts": 147
+ },
+ {
+  "id": 152,
+  "district": "CHIKKAMAGALURU",
+  "ac_code": "A152",
+  "ac_name": "Sringeri",
+  "total_parts": 190
+ },
+ {
+  "id": 153,
+  "district": "CHIKKAMAGALURU",
+  "ac_code": "A153",
+  "ac_name": "Mudigere",
+  "total_parts": 170
+ },
+ {
+  "id": 154,
+  "district": "CHIKKAMAGALURU",
+  "ac_code": "A154",
+  "ac_name": "Chikmagalur",
+  "total_parts": 183
+ },
+ {
+  "id": 155,
+  "district": "CHIKKAMAGALURU",
+  "ac_code": "A155",
+  "ac_name": "Birur",
+  "total_parts": 169
+ },
+ {
+  "id": 156,
+  "district": "CHIKKAMAGALURU",
+  "ac_code": "A156",
+  "ac_name": "Kadur",
+  "total_parts": 171
+ },
+ {
+  "id": 157,
+  "district": "CHIKKAMAGALURU",
+  "ac_code": "A157",
+  "ac_name": "Tarikere",
+  "total_parts": 177
+ },
+ {
+  "id": 158,
+  "district": "DAVANGERE",
+  "ac_code": "A158",
+  "ac_name": "Channagiri",
+  "total_parts": 158
+ },
+ {
+  "id": 159,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A159",
+  "ac_name": "Holehonnur",
+  "total_parts": 188
+ },
+ {
+  "id": 160,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A160",
+  "ac_name": "Bhadravati",
+  "total_parts": 203
+ },
+ {
+  "id": 161,
+  "district": "DAVANGERE",
+  "ac_code": "A161",
+  "ac_name": "Honnali",
+  "total_parts": 175
+ },
+ {
+  "id": 162,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A162",
+  "ac_name": "Shimoga",
+  "total_parts": 257
+ },
+ {
+  "id": 163,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A163",
+  "ac_name": "Tirthahalli",
+  "total_parts": 177
+ },
+ {
+  "id": 164,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A164",
+  "ac_name": "Hosanagar",
+  "total_parts": 196
+ },
+ {
+  "id": 165,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A165",
+  "ac_name": "Sagar",
+  "total_parts": 184
+ },
+ {
+  "id": 166,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A166",
+  "ac_name": "Sorab",
+  "total_parts": 152
+ },
+ {
+  "id": 167,
+  "district": "SHIVAMOGGA",
+  "ac_code": "A167",
+  "ac_name": "Shikaripura",
+  "total_parts": 177
+ },
+ {
+  "id": 168,
+  "district": "UTTAR KANNADA",
+  "ac_code": "A168",
+  "ac_name": "Sirsi",
+  "total_parts": 202
+ },
+ {
+  "id": 169,
+  "district": "UTTAR KANNADA",
+  "ac_code": "A169",
+  "ac_name": "Bhatkal",
+  "total_parts": 213
+ },
+ {
+  "id": 170,
+  "district": "UTTAR KANNADA",
+  "ac_code": "A170",
+  "ac_name": "Kumta",
+  "total_parts": 194
+ },
+ {
+  "id": 171,
+  "district": "UTTAR KANNADA",
+  "ac_code": "A171",
+  "ac_name": "Ankola",
+  "total_parts": 189
+ },
+ {
+  "id": 172,
+  "district": "UTTAR KANNADA",
+  "ac_code": "A172",
+  "ac_name": "Karwar",
+  "total_parts": 177
+ },
+ {
+  "id": 173,
+  "district": "UTTAR KANNADA",
+  "ac_code": "A173",
+  "ac_name": "Haliyal",
+  "total_parts": 233
+ },
+ {
+  "id": 174,
+  "district": "DHARWAD",
+  "ac_code": "A174",
+  "ac_name": "Dharwad Rural",
+  "total_parts": 180
+ },
+ {
+  "id": 175,
+  "district": "DHARWAD",
+  "ac_code": "A175",
+  "ac_name": "Dharwad",
+  "total_parts": 213
+ },
+ {
+  "id": 176,
+  "district": "DHARWAD",
+  "ac_code": "A176",
+  "ac_name": "Hubli",
+  "total_parts": 175
+ },
+ {
+  "id": 177,
+  "district": "DHARWAD",
+  "ac_code": "A177",
+  "ac_name": "Hubli Rural",
+  "total_parts": 267
+ },
+ {
+  "id": 178,
+  "district": "DHARWAD",
+  "ac_code": "A178",
+  "ac_name": "Kalghatgi",
+  "total_parts": 171
+ },
+ {
+  "id": 179,
+  "district": "DHARWAD",
+  "ac_code": "A179",
+  "ac_name": "Kundgol",
+  "total_parts": 163
+ },
+ {
+  "id": 180,
+  "district": "HAVERI",
+  "ac_code": "A180",
+  "ac_name": "Shiggaon",
+  "total_parts": 200
+ },
+ {
+  "id": 181,
+  "district": "HAVERI",
+  "ac_code": "A181",
+  "ac_name": "Hangal",
+  "total_parts": 187
+ },
+ {
+  "id": 182,
+  "district": "HAVERI",
+  "ac_code": "A182",
+  "ac_name": "Hirekerur",
+  "total_parts": 200
+ },
+ {
+  "id": 183,
+  "district": "HAVERI",
+  "ac_code": "A183",
+  "ac_name": "Ranibennur",
+  "total_parts": 194
+ },
+ {
+  "id": 184,
+  "district": "HAVERI",
+  "ac_code": "A184",
+  "ac_name": "Byadgi",
+  "total_parts": 171
+ },
+ {
+  "id": 185,
+  "district": "HAVERI",
+  "ac_code": "A185",
+  "ac_name": "Haveri",
+  "total_parts": 207
+ },
+ {
+  "id": 186,
+  "district": "GADAG",
+  "ac_code": "A186",
+  "ac_name": "Shirahatti",
+  "total_parts": 150
+ },
+ {
+  "id": 187,
+  "district": "GADAG",
+  "ac_code": "A187",
+  "ac_name": "Mundargi",
+  "total_parts": 139
+ },
+ {
+  "id": 188,
+  "district": "GADAG",
+  "ac_code": "A188",
+  "ac_name": "Gadag",
+  "total_parts": 141
+ },
+ {
+  "id": 189,
+  "district": "GADAG",
+  "ac_code": "A189",
+  "ac_name": "Ron",
+  "total_parts": 155
+ },
+ {
+  "id": 190,
+  "district": "GADAG",
+  "ac_code": "A190",
+  "ac_name": "Nargund",
+  "total_parts": 120
+ },
+ {
+  "id": 191,
+  "district": "DHARWAD",
+  "ac_code": "A191",
+  "ac_name": "Navalgund",
+  "total_parts": 160
+ },
+ {
+  "id": 192,
+  "district": "BELGAUM",
+  "ac_code": "A192",
+  "ac_name": "Ramdurg",
+  "total_parts": 190
+ },
+ {
+  "id": 193,
+  "district": "BELGAUM",
+  "ac_code": "A193",
+  "ac_name": "Saundatti",
+  "total_parts": 206
+ },
+ {
+  "id": 194,
+  "district": "BELGAUM",
+  "ac_code": "A194",
+  "ac_name": "Bailhongal",
+  "total_parts": 175
+ },
+ {
+  "id": 195,
+  "district": "BELGAUM",
+  "ac_code": "A195",
+  "ac_name": "Kittur",
+  "total_parts": 181
+ },
+ {
+  "id": 196,
+  "district": "BELGAUM",
+  "ac_code": "A196",
+  "ac_name": "Khanapur",
+  "total_parts": 226
+ },
+ {
+  "id": 197,
+  "district": "BELGAUM",
+  "ac_code": "A197",
+  "ac_name": "Belgaum",
+  "total_parts": 202
+ },
+ {
+  "id": 198,
+  "district": "BELGAUM",
+  "ac_code": "A198",
+  "ac_name": "Uchagaon",
+  "total_parts": 214
+ },
+ {
+  "id": 199,
+  "district": "BELGAUM",
+  "ac_code": "A199",
+  "ac_name": "Bagewadi",
+  "total_parts": 167
+ },
+ {
+  "id": 200,
+  "district": "BELGAUM",
+  "ac_code": "A200",
+  "ac_name": "Gokak",
+  "total_parts": 191
+ },
+ {
+  "id": 201,
+  "district": "BELGAUM",
+  "ac_code": "A201",
+  "ac_name": "Arabhavi",
+  "total_parts": 215
+ },
+ {
+  "id": 202,
+  "district": "BELGAUM",
+  "ac_code": "A202",
+  "ac_name": "Hukkeri",
+  "total_parts": 138
+ },
+ {
+  "id": 203,
+  "district": "BELGAUM",
+  "ac_code": "A203",
+  "ac_name": "Sankeshwar",
+  "total_parts": 145
+ },
+ {
+  "id": 204,
+  "district": "BELGAUM",
+  "ac_code": "A204",
+  "ac_name": "Nippani",
+  "total_parts": 137
+ },
+ {
+  "id": 205,
+  "district": "BELGAUM",
+  "ac_code": "A205",
+  "ac_name": "Sadalga",
+  "total_parts": 137
+ },
+ {
+  "id": 206,
+  "district": "BELGAUM",
+  "ac_code": "A206",
+  "ac_name": "Chikkodi",
+  "total_parts": 149
+ },
+ {
+  "id": 207,
+  "district": "BELGAUM",
+  "ac_code": "A207",
+  "ac_name": "Raibag",
+  "total_parts": 211
+ },
+ {
+  "id": 208,
+  "district": "BELGAUM",
+  "ac_code": "A208",
+  "ac_name": "Kagwad",
+  "total_parts": 158
+ },
+ {
+  "id": 209,
+  "district": "BELGAUM",
+  "ac_code": "A209",
+  "ac_name": "Athani",
+  "total_parts": 184
+ },
+ {
+  "id": 210,
+  "district": "BAGALKOT",
+  "ac_code": "A210",
+  "ac_name": "Jamkhandi",
+  "total_parts": 228
+ },
+ {
+  "id": 211,
+  "district": "BAGALKOT",
+  "ac_code": "A211",
+  "ac_name": "Bilgi",
+  "total_parts": 209
+ },
+ {
+  "id": 212,
+  "district": "BAGALKOT",
+  "ac_code": "A212",
+  "ac_name": "Mudhol",
+  "total_parts": 210
+ },
+ {
+  "id": 213,
+  "district": "BAGALKOT",
+  "ac_code": "A213",
+  "ac_name": "Bagalkot",
+  "total_parts": 176
+ },
+ {
+  "id": 214,
+  "district": "BAGALKOT",
+  "ac_code": "A214",
+  "ac_name": "Badami",
+  "total_parts": 173
+ },
+ {
+  "id": 215,
+  "district": "BAGALKOT",
+  "ac_code": "A215",
+  "ac_name": "Gulegud",
+  "total_parts": 175
+ },
+ {
+  "id": 216,
+  "district": "BAGALKOT",
+  "ac_code": "A216",
+  "ac_name": "Hungund",
+  "total_parts": 177
+ },
+ {
+  "id": 217,
+  "district": "BIJAPURA",
+  "ac_code": "A217",
+  "ac_name": "Muddebihal",
+  "total_parts": 162
+ },
+ {
+  "id": 218,
+  "district": "BIJAPURA",
+  "ac_code": "A218",
+  "ac_name": "Huvina Hipparagi",
+  "total_parts": 177
+ },
+ {
+  "id": 219,
+  "district": "BIJAPURA",
+  "ac_code": "A219",
+  "ac_name": "Basavana Bagevadi",
+  "total_parts": 187
+ },
+ {
+  "id": 220,
+  "district": "BIJAPURA",
+  "ac_code": "A220",
+  "ac_name": "Tikota",
+  "total_parts": 177
+ },
+ {
+  "id": 221,
+  "district": "BIJAPURA",
+  "ac_code": "A221",
+  "ac_name": "Bijapur",
+  "total_parts": 249
+ },
+ {
+  "id": 222,
+  "district": "BIJAPURA",
+  "ac_code": "A222",
+  "ac_name": "Ballolli",
+  "total_parts": 205
+ },
+ {
+  "id": 223,
+  "district": "BIJAPURA",
+  "ac_code": "A223",
+  "ac_name": "Indi",
+  "total_parts": 201
+ },
+ {
+  "id": 224,
+  "district": "BIJAPURA",
+  "ac_code": "A224",
+  "ac_name": "Sindagi",
+  "total_parts": 205
+ }
+]

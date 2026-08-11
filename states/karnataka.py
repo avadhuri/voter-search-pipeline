@@ -31,8 +31,8 @@ import requests
 
 from states.base import Constituency, StateConnector, VoterRecord
 
-_HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AC_META_PATH = os.path.join(_HERE, "data", "ac_meta.json")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+AC_META_PATH = os.path.join(_HERE, "meta", "ac_meta.json")
 
 CSV_URL_TEMPLATE = "https://ceo.karnataka.gov.in/csv_upload/english/{ac_code}.csv"
 

@@ -88,8 +88,8 @@ import requests
 from states.base import Constituency, StateConnector, VoterRecord
 from states.haryana_dkraj import decode as dkraj_decode
 
-_HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AC_META_PATH = os.path.join(_HERE, "data", "haryana_ac_meta.json")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+AC_META_PATH = os.path.join(_HERE, "meta", "haryana_ac_meta.json")
 
 BASE = "https://ceoharyana.gov.in"
 DISTRICT_URL = BASE + "/WebCMS/GetDistrict2002"

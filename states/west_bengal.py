@@ -13,10 +13,11 @@ never checked server-side -- the endpoint returns the PDF to an anonymous
 request with no cookie or session. Nothing here bypasses an access control;
 these are public electoral rolls served by their own publisher.
 
-The district -> AC -> part tree is scraped once into data/west_bengal_ac_meta.json
-(committed, mirroring Karnataka's data/ac_meta.json) rather than re-fetched on
-every run: it is 316 HTML pages for a tree that has not changed since 2002, and
-committing it keeps a build reproducible and lets fetch_raw() work offline-ish.
+The district -> AC -> part tree is scraped once into
+states/meta/west_bengal_ac_meta.json (committed, mirroring Karnataka's
+states/meta/ac_meta.json) rather than re-fetched on every run: it is 316 HTML
+pages for a tree that has not changed since 2002, and committing it keeps a
+build reproducible and lets fetch_raw() work offline-ish.
 
 Raw bundle shape
 ----------------
@@ -65,8 +66,8 @@ import requests
 
 from states.base import Constituency, StateConnector, VoterRecord
 
-_HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AC_META_PATH = os.path.join(_HERE, "data", "west_bengal_ac_meta.json")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+AC_META_PATH = os.path.join(_HERE, "meta", "west_bengal_ac_meta.json")
 
 PDF_URL = "https://ceowestbengal.wb.gov.in/RollPDF/GetDraft?acId={ac_id}&key={key}"
 PART_MEMBER = "part{part_no:04d}.pdf"

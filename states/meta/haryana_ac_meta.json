@@ -1,0 +1,812 @@
+[
+ {
+  "ac_id": 1,
+  "ac_code": "HR01",
+  "ac_name": "Kalka",
+  "district": "Panchkula",
+  "total_parts": 287,
+  "listed_parts": 287,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 2,
+  "ac_code": "HR02",
+  "ac_name": "Naraingarh",
+  "district": "Ambala",
+  "total_parts": 149,
+  "listed_parts": 149,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 3,
+  "ac_code": "HR03",
+  "ac_name": "Sadhaura(SC)",
+  "district": "Yamunanagar",
+  "total_parts": 181,
+  "listed_parts": 181,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 4,
+  "ac_code": "HR04",
+  "ac_name": "Chhachhrauli",
+  "district": "Yamunanagar",
+  "total_parts": 157,
+  "listed_parts": 157,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 5,
+  "ac_code": "HR05",
+  "ac_name": "Yamuna Nagar",
+  "district": "Yamunanagar",
+  "total_parts": 222,
+  "listed_parts": 222,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 6,
+  "ac_code": "HR06",
+  "ac_name": "Jagadhri",
+  "district": "Yamunanagar",
+  "total_parts": 167,
+  "listed_parts": 167,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 7,
+  "ac_code": "HR07",
+  "ac_name": "Mullana(SC)",
+  "district": "Ambala",
+  "total_parts": 168,
+  "listed_parts": 168,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 8,
+  "ac_code": "HR08",
+  "ac_name": "Ambala Cantt",
+  "district": "Ambala",
+  "total_parts": 128,
+  "listed_parts": 128,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 9,
+  "ac_code": "HR09",
+  "ac_name": "Ambala City",
+  "district": "Ambala",
+  "total_parts": 153,
+  "listed_parts": 153,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 10,
+  "ac_code": "HR10",
+  "ac_name": "Naggal",
+  "district": "Ambala",
+  "total_parts": 155,
+  "listed_parts": 155,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 11,
+  "ac_code": "HR11",
+  "ac_name": "Indri",
+  "district": "Karnal",
+  "total_parts": 165,
+  "listed_parts": 165,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 12,
+  "ac_code": "HR12",
+  "ac_name": "Nilokheri",
+  "district": "Karnal",
+  "total_parts": 146,
+  "listed_parts": 146,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 13,
+  "ac_code": "HR13",
+  "ac_name": "Karnal",
+  "district": "Karnal",
+  "total_parts": 165,
+  "listed_parts": 165,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 14,
+  "ac_code": "HR14",
+  "ac_name": "Jundla(SC)",
+  "district": "Karnal",
+  "total_parts": 136,
+  "listed_parts": 136,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 15,
+  "ac_code": "HR15",
+  "ac_name": "Gharaunda",
+  "district": "Karnal",
+  "total_parts": 151,
+  "listed_parts": 151,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 16,
+  "ac_code": "HR16",
+  "ac_name": "Assandh(SC)",
+  "district": "Karnal",
+  "total_parts": 121,
+  "listed_parts": 121,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 17,
+  "ac_code": "HR17",
+  "ac_name": "Panipat",
+  "district": "Panipat",
+  "total_parts": 222,
+  "listed_parts": 222,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 18,
+  "ac_code": "HR18",
+  "ac_name": "Samalkha",
+  "district": "Panipat",
+  "total_parts": 166,
+  "listed_parts": 166,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 19,
+  "ac_code": "HR19",
+  "ac_name": "Naultha",
+  "district": "Panipat",
+  "total_parts": 169,
+  "listed_parts": 169,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 20,
+  "ac_code": "HR20",
+  "ac_name": "Shahabad",
+  "district": "Kurukshetra",
+  "total_parts": 158,
+  "listed_parts": 158,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 21,
+  "ac_code": "HR21",
+  "ac_name": "Radaur(SC)",
+  "district": "Yamunanagar",
+  "total_parts": 160,
+  "listed_parts": 160,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 22,
+  "ac_code": "HR22",
+  "ac_name": "Thanesar",
+  "district": "Kurukshetra",
+  "total_parts": 179,
+  "listed_parts": 179,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 23,
+  "ac_code": "HR23",
+  "ac_name": "Pehowa",
+  "district": "Kurukshetra",
+  "total_parts": 168,
+  "listed_parts": 168,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 24,
+  "ac_code": "HR24",
+  "ac_name": "Guhla(SC)",
+  "district": "Kaithal",
+  "total_parts": 168,
+  "listed_parts": 168,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 25,
+  "ac_code": "HR25",
+  "ac_name": "Kaithal",
+  "district": "Kaithal",
+  "total_parts": 141,
+  "listed_parts": 141,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 26,
+  "ac_code": "HR26",
+  "ac_name": "Pundri",
+  "district": "Kaithal",
+  "total_parts": 136,
+  "listed_parts": 136,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 27,
+  "ac_code": "HR27",
+  "ac_name": "Pai",
+  "district": "Kaithal",
+  "total_parts": 131,
+  "listed_parts": 131,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 28,
+  "ac_code": "HR28",
+  "ac_name": "Hassangarh",
+  "district": "Rohtak",
+  "total_parts": 131,
+  "listed_parts": 131,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 29,
+  "ac_code": "HR29",
+  "ac_name": "Kiloi",
+  "district": "Rohtak",
+  "total_parts": 146,
+  "listed_parts": 146,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 30,
+  "ac_code": "HR30",
+  "ac_name": "Rohtak",
+  "district": "Rohtak",
+  "total_parts": 166,
+  "listed_parts": 166,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 31,
+  "ac_code": "HR31",
+  "ac_name": "Meham",
+  "district": "Rohtak",
+  "total_parts": 168,
+  "listed_parts": 168,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 32,
+  "ac_code": "HR32",
+  "ac_name": "Kalanour (SC)",
+  "district": "Rohtak",
+  "total_parts": 139,
+  "listed_parts": 139,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 33,
+  "ac_code": "HR33",
+  "ac_name": "Beri",
+  "district": "Jhajjar",
+  "total_parts": 149,
+  "listed_parts": 149,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 34,
+  "ac_code": "HR34",
+  "ac_name": "Salhawas",
+  "district": "Jhajjar",
+  "total_parts": 153,
+  "listed_parts": 153,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 35,
+  "ac_code": "HR35",
+  "ac_name": "Jhajjar (SC)",
+  "district": "Jhajjar",
+  "total_parts": 165,
+  "listed_parts": 165,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 36,
+  "ac_code": "HR36",
+  "ac_name": "Badli",
+  "district": "Jhajjar",
+  "total_parts": 151,
+  "listed_parts": 151,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 37,
+  "ac_code": "HR37",
+  "ac_name": "Bahadurgarh",
+  "district": "Jhajjar",
+  "total_parts": 177,
+  "listed_parts": 177,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 38,
+  "ac_code": "HR38",
+  "ac_name": "Baroda(SC)",
+  "district": "Sonipat",
+  "total_parts": 153,
+  "listed_parts": 153,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 39,
+  "ac_code": "HR39",
+  "ac_name": "Gohana",
+  "district": "Sonipat",
+  "total_parts": 180,
+  "listed_parts": 180,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 40,
+  "ac_code": "HR40",
+  "ac_name": "Kailana",
+  "district": "Sonipat",
+  "total_parts": 184,
+  "listed_parts": 184,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 41,
+  "ac_code": "HR41",
+  "ac_name": "Sonepat",
+  "district": "Sonipat",
+  "total_parts": 186,
+  "listed_parts": 186,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 42,
+  "ac_code": "HR42",
+  "ac_name": "Rai",
+  "district": "Sonipat",
+  "total_parts": 169,
+  "listed_parts": 169,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 43,
+  "ac_code": "HR43",
+  "ac_name": "Rohat",
+  "district": "Sonipat",
+  "total_parts": 158,
+  "listed_parts": 158,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 44,
+  "ac_code": "HR44",
+  "ac_name": "Kalayat (SC)",
+  "district": "Kaithal",
+  "total_parts": 134,
+  "listed_parts": 134,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 45,
+  "ac_code": "HR45",
+  "ac_name": "Narwana",
+  "district": "Jind",
+  "total_parts": 150,
+  "listed_parts": 150,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 46,
+  "ac_code": "HR46",
+  "ac_name": "Uchana Kalan",
+  "district": "Jind",
+  "total_parts": 154,
+  "listed_parts": 154,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 47,
+  "ac_code": "HR47",
+  "ac_name": "Rajound",
+  "district": "Jind",
+  "total_parts": 130,
+  "listed_parts": 130,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 48,
+  "ac_code": "HR48",
+  "ac_name": "Jind",
+  "district": "Jind",
+  "total_parts": 175,
+  "listed_parts": 175,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 49,
+  "ac_code": "HR49",
+  "ac_name": "Julana",
+  "district": "Jind",
+  "total_parts": 149,
+  "listed_parts": 149,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 50,
+  "ac_code": "HR50",
+  "ac_name": "Safidon",
+  "district": "Jind",
+  "total_parts": 156,
+  "listed_parts": 156,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 51,
+  "ac_code": "HR51",
+  "ac_name": "Faridabad",
+  "district": "Faridabad",
+  "total_parts": 280,
+  "listed_parts": 280,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 52,
+  "ac_code": "HR52",
+  "ac_name": "MewlaMaharajpur",
+  "district": "Faridabad",
+  "total_parts": 340,
+  "listed_parts": 340,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 53,
+  "ac_code": "HR53",
+  "ac_name": "Ballabgarh",
+  "district": "Faridabad",
+  "total_parts": 222,
+  "listed_parts": 222,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 54,
+  "ac_code": "HR54",
+  "ac_name": "Palwal",
+  "district": "Faridabad",
+  "total_parts": 178,
+  "listed_parts": 178,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 55,
+  "ac_code": "HR55",
+  "ac_name": "Hassanpur (SC)",
+  "district": "Faridabad",
+  "total_parts": 174,
+  "listed_parts": 174,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 56,
+  "ac_code": "HR56",
+  "ac_name": "Hathin",
+  "district": "Faridabad",
+  "total_parts": 146,
+  "listed_parts": 146,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 57,
+  "ac_code": "HR57",
+  "ac_name": "Ferozepur Jhirka",
+  "district": "Gurgaon",
+  "total_parts": 177,
+  "listed_parts": 177,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 58,
+  "ac_code": "HR58",
+  "ac_name": "Nuh",
+  "district": "Gurgaon",
+  "total_parts": 156,
+  "listed_parts": 156,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 59,
+  "ac_code": "HR59",
+  "ac_name": "Taoru",
+  "district": "Gurgaon",
+  "total_parts": 184,
+  "listed_parts": 184,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 60,
+  "ac_code": "HR60",
+  "ac_name": "Sohna",
+  "district": "Gurgaon",
+  "total_parts": 186,
+  "listed_parts": 186,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 61,
+  "ac_code": "HR61",
+  "ac_name": "Gurgaon",
+  "district": "Gurgaon",
+  "total_parts": 232,
+  "listed_parts": 231,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 62,
+  "ac_code": "HR62",
+  "ac_name": "Pataudi (SC)",
+  "district": "Gurgaon",
+  "total_parts": 180,
+  "listed_parts": 180,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 63,
+  "ac_code": "HR63",
+  "ac_name": "Badhra",
+  "district": "Bhiwani",
+  "total_parts": 177,
+  "listed_parts": 177,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 64,
+  "ac_code": "HR64",
+  "ac_name": "Dadri",
+  "district": "Bhiwani",
+  "total_parts": 171,
+  "listed_parts": 171,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 65,
+  "ac_code": "HR65",
+  "ac_name": "Mundhal Khurd",
+  "district": "Bhiwani",
+  "total_parts": 173,
+  "listed_parts": 173,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 66,
+  "ac_code": "HR66",
+  "ac_name": "Bhiwani",
+  "district": "Bhiwani",
+  "total_parts": 164,
+  "listed_parts": 164,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 67,
+  "ac_code": "HR67",
+  "ac_name": "Tosham",
+  "district": "Bhiwani",
+  "total_parts": 177,
+  "listed_parts": 177,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 68,
+  "ac_code": "HR68",
+  "ac_name": "Loharu",
+  "district": "Bhiwani",
+  "total_parts": 194,
+  "listed_parts": 194,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 69,
+  "ac_code": "HR69",
+  "ac_name": "Bawani Khera (SC)",
+  "district": "Bhiwani",
+  "total_parts": 177,
+  "listed_parts": 177,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 70,
+  "ac_code": "HR70",
+  "ac_name": "Barwala",
+  "district": "Hisar",
+  "total_parts": 170,
+  "listed_parts": 170,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 71,
+  "ac_code": "HR71",
+  "ac_name": "Narnaund",
+  "district": "Hisar",
+  "total_parts": 145,
+  "listed_parts": 145,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 72,
+  "ac_code": "HR72",
+  "ac_name": "Hansi",
+  "district": "Hisar",
+  "total_parts": 167,
+  "listed_parts": 167,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 73,
+  "ac_code": "HR73",
+  "ac_name": "Bhattu Kalan",
+  "district": "Fatehabad",
+  "total_parts": 146,
+  "listed_parts": 146,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 74,
+  "ac_code": "HR74",
+  "ac_name": "Hissar",
+  "district": "Hisar",
+  "total_parts": 186,
+  "listed_parts": 186,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 75,
+  "ac_code": "HR75",
+  "ac_name": "Ghirai",
+  "district": "Hisar",
+  "total_parts": 160,
+  "listed_parts": 160,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 76,
+  "ac_code": "HR76",
+  "ac_name": "Tohana",
+  "district": "Fatehabad",
+  "total_parts": 168,
+  "listed_parts": 168,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 77,
+  "ac_code": "HR77",
+  "ac_name": "Ratia (SC)",
+  "district": "Fatehabad",
+  "total_parts": 159,
+  "listed_parts": 159,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 78,
+  "ac_code": "HR78",
+  "ac_name": "Fatehabad",
+  "district": "Fatehabad",
+  "total_parts": 179,
+  "listed_parts": 179,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 79,
+  "ac_code": "HR79",
+  "ac_name": "Adampur",
+  "district": "Hisar",
+  "total_parts": 160,
+  "listed_parts": 160,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 80,
+  "ac_code": "HR80",
+  "ac_name": "Darba Kalan",
+  "district": "Sirsa",
+  "total_parts": 163,
+  "listed_parts": 163,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 81,
+  "ac_code": "HR81",
+  "ac_name": "Ellenabad (SC)",
+  "district": "Sirsa",
+  "total_parts": 178,
+  "listed_parts": 178,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 82,
+  "ac_code": "HR82",
+  "ac_name": "Sirsa",
+  "district": "Sirsa",
+  "total_parts": 181,
+  "listed_parts": 181,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 83,
+  "ac_code": "HR83",
+  "ac_name": "Rori",
+  "district": "Sirsa",
+  "total_parts": 170,
+  "listed_parts": 170,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 84,
+  "ac_code": "HR84",
+  "ac_name": "Dabwali (SC)",
+  "district": "Sirsa",
+  "total_parts": 180,
+  "listed_parts": 180,
+  "roll_format": "scanned"
+ },
+ {
+  "ac_id": 85,
+  "ac_code": "HR85",
+  "ac_name": "Bawal (SC)",
+  "district": "Rewari",
+  "total_parts": 195,
+  "listed_parts": 195,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 86,
+  "ac_code": "HR86",
+  "ac_name": "Rewari",
+  "district": "Rewari",
+  "total_parts": 174,
+  "listed_parts": 174,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 87,
+  "ac_code": "HR87",
+  "ac_name": "Jatusana",
+  "district": "Rewari",
+  "total_parts": 199,
+  "listed_parts": 199,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 88,
+  "ac_code": "HR88",
+  "ac_name": "Mahendragarh",
+  "district": "Mahendergarh",
+  "total_parts": 201,
+  "listed_parts": 201,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 89,
+  "ac_code": "HR89",
+  "ac_name": "Ateli",
+  "district": "Mahendergarh",
+  "total_parts": 190,
+  "listed_parts": 190,
+  "roll_format": "text"
+ },
+ {
+  "ac_id": 90,
+  "ac_code": "HR90",
+  "ac_name": "Narnaul",
+  "district": "Mahendergarh",
+  "total_parts": 190,
+  "listed_parts": 190,
+  "roll_format": "text"
+ }
+]
