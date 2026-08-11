@@ -17,17 +17,27 @@ STATE_CONNECTORS = {
         "label": "Karnataka",
         "raw_dir": "data/raw",
         "raw_glob": "*.csv",
+        "script": "latin",
     },
     "west_bengal": {
         "connector_cls": WestBengalConnector,
         "label": "West Bengal",
         "raw_dir": "data/raw/west_bengal",
         "raw_glob": "*.zip",
+        # The loaded ACs are the Latin-typeset Kolkata subset (see this
+        # module's docstring in west_bengal.py) -- the ~275 Bengali-typeset
+        # ACs aren't fetchable at all, so nothing Bengali-scripted ever
+        # reaches the DB today. "latin" reflects what's actually loaded.
+        "script": "latin",
     },
     "haryana": {
         "connector_cls": HaryanaConnector,
         "label": "Haryana",
         "raw_dir": "data/raw/haryana",
         "raw_glob": "*.zip",
+        # DK-RAJ legacy-font PDFs decode to real Devanagari text (see
+        # states/haryana_dkraj.py) -- scripts/transliteration.py uses this
+        # flag to know which states need *_latin columns backfilled/matched.
+        "script": "devanagari",
     },
 }

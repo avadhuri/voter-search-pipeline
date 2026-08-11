@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from states.base import Constituency
 from states.karnataka import KarnatakaConnector
 from states.registry import STATE_CONNECTORS
+from transliteration import backfill_latin_columns
 
 SCHEMA = """
 DROP TABLE IF EXISTS voters;
@@ -50,7 +51,9 @@ CREATE TABLE voters (
     serial_no INTEGER,
     local_ref TEXT,
     full_name TEXT,
+    full_name_latin TEXT,
     full_relative_name TEXT,
+    full_relative_name_latin TEXT,
     relation_code TEXT,
     relation_label TEXT,
     age INTEGER,
@@ -126,6 +129,7 @@ def build_single(raw_csv_path, db_path, roll_year=2002):
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
     conn.executemany(INSERT_SQL, _records_to_rows(records))
+    backfill_latin_columns(conn)
     _finalize(conn)
 
     total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
@@ -152,6 +156,7 @@ def build_combined(raw_dir, db_path, roll_year=2002):
         total += len(records)
         print(f"  {ac_code}: {len(records)} records")
 
+    backfill_latin_columns(conn)
     _finalize(conn)
     grand_total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
     print(f"Loaded {grand_total} records from {len(csv_paths)} ACs into {db_path}.")
@@ -187,6 +192,9 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
         print(f"{state_id}: {state_total} records from {len(paths)} files")
         grand_total += state_total
 
+    translit_count = backfill_latin_columns(conn, state_ids=state_ids)
+    if translit_count:
+        print(f"Transliterated {translit_count} distinct Devanagari name strings to Latin script.")
     _finalize(conn)
     check_total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
     print(f"\nLoaded {check_total} records across {len(state_ids)} state(s) into {db_path}.")
