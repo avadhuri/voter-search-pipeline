@@ -7,6 +7,10 @@ name = "voter-search-pipeline"
 version = "0.1.0"
 description = "State-pluggable connectors, fuzzy matching, and a search CLI for India's digitized 2002-era electoral rolls."
 requires-python = ">=3.9"
+license = {text = "MIT"}
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
 dependencies = [
     "numpy==2.0.2",
     "rapidfuzz==3.13.0",
