@@ -26,6 +26,7 @@ Usage:
         the running app's DB_PATH should point at once more than one state
         has data.
 """
+import datetime
 import glob
 import os
 import sqlite3
@@ -61,6 +62,16 @@ CREATE TABLE voters (
     remark TEXT,
     locality TEXT
 );
+
+DROP TABLE IF EXISTS state_coverage;
+CREATE TABLE state_coverage (
+    state_id TEXT PRIMARY KEY,
+    label TEXT,
+    acs_total INTEGER,
+    acs_digitized INTEGER,
+    locality_coverage TEXT,
+    built_at TEXT
+);
 """
 
 INSERT_SQL = """
@@ -69,6 +80,12 @@ INSERT INTO voters (
     local_ref, full_name, full_relative_name, relation_code,
     relation_label, age, gender, remark, locality
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+"""
+
+STATE_COVERAGE_INSERT_SQL = """
+INSERT INTO state_coverage (
+    state_id, label, acs_total, acs_digitized, locality_coverage, built_at
+) VALUES (?,?,?,?,?,?)
 """
 
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
@@ -166,13 +183,22 @@ def build_combined(raw_dir, db_path, roll_year=2002):
 
 def build_multi_state(state_ids, db_path, roll_year=2002):
     """Build one DB combining every listed state's raw files, per
-    states/registry.py's connector class + raw_dir/raw_glob for each."""
+    states/registry.py's connector class + raw_dir/raw_glob for each.
+
+    Also populates state_coverage -- one row per state summarizing how much
+    of it is digitized (acs_digitized/acs_total, from raw files present vs.
+    list_constituencies()) and whether locality data (village/town, see
+    VoterRecord.locality) was actually extracted for it. This is what lets
+    the serving app show roadmap/coverage info straight from the DB, with
+    no compile-time knowledge of which states exist.
+    """
     unknown = [s for s in state_ids if s not in STATE_CONNECTORS]
     if unknown:
         raise SystemExit(f"Unknown state(s): {', '.join(unknown)}. Known: {', '.join(STATE_CONNECTORS)}")
 
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
+    built_at = datetime.datetime.utcnow().isoformat()
 
     grand_total = 0
     for state_id in state_ids:
@@ -181,6 +207,7 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
         ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_total = 0
+        acs_with_locality = set()
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
             ac = _resolve_ac(ac_code, ac_lookup)
@@ -189,9 +216,24 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
             records = connector.parse_raw(raw, ac, roll_year)
             conn.executemany(INSERT_SQL, _records_to_rows(records))
             state_total += len(records)
+            if any(r.locality for r in records):
+                acs_with_locality.add(ac_code)
             print(f"  [{state_id}] {ac_code}: {len(records)} records")
         print(f"{state_id}: {state_total} records from {len(paths)} files")
         grand_total += state_total
+
+        if not paths:
+            locality_coverage = "none"
+        elif len(acs_with_locality) == len(paths):
+            locality_coverage = "full"
+        elif acs_with_locality:
+            locality_coverage = "partial"
+        else:
+            locality_coverage = "none"
+        conn.execute(STATE_COVERAGE_INSERT_SQL, (
+            state_id, info["label"], len(ac_lookup), len(paths),
+            locality_coverage, built_at,
+        ))
 
     translit_count = backfill_latin_columns(conn, state_ids=state_ids)
     if translit_count:
