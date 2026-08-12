@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voter-search-pipeline"
+version = "0.1.0"
+description = "State-pluggable connectors, fuzzy matching, and a search CLI for India's digitized 2002-era electoral rolls."
+requires-python = ">=3.9"
+dependencies = [
+    "rapidfuzz==3.13.0",
+    "indic-transliteration==2.3.82",
+    "pdfplumber==0.11.8",
+    "playwright==1.60.0",
+    "requests==2.32.5",
+]
+
+[project.optional-dependencies]
+eval = [
+    "numpy==2.0.2",
+    "scikit-learn==1.6.1",
+    "sentence-transformers==5.1.2",
+    "torch==2.8.0",
+]
+
+[tool.setuptools]
+py-modules = [
+    "matching",
+    "build_db",
+    "cross_reference",
+    "transliteration",
+    "migrate_translit",
+    "search",
+    "audit_raw_csv",
+    "eval_embeddings",
+    "download_2002_all",
+    "download_haryana",
+    "download_west_bengal",
+    "download_2025_pilot",
+]
+packages = ["states"]
+
+[tool.setuptools.package-dir]
+"" = "scripts"
+states = "states"
+
+[tool.setuptools.package-data]
+states = ["meta/*.json"]
