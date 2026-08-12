@@ -29,7 +29,14 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from matching import ALGORITHMS, get_batch_scorer, get_scorer, score_fields, score_fields_batch
+from matching import (
+    ALGORITHMS,
+    get_batch_scorer,
+    get_scorer,
+    score_fields,
+    score_fields_batch,
+    score_fields_batch_by_group,
+)
 
 TIERS = [5, 10, 25, 28]  # AC counts: today's MAX_ACS, then up to WB's largest district (28)
 SYNTHETIC_ROWS_PER_AC = 40_000  # ~ observed real per-AC scale (CLAUDE.md: 150-220K for 5 ACs)
@@ -52,7 +59,7 @@ def load_real_tier(db_path, n_acs):
     ac_clause = " OR ".join(["(state = ? AND ac_code = ?)"] * len(pairs))
     params = [v for p in pairs for v in (p["state"], p["ac_code"])]
     rows = [dict(r) for r in conn.execute(
-        f"SELECT id, full_name, full_relative_name FROM voters WHERE ({ac_clause})", params
+        f"SELECT id, full_name, full_relative_name, state, ac_code FROM voters WHERE ({ac_clause})", params
     ).fetchall()]
     conn.close()
     return rows
@@ -72,7 +79,10 @@ def synthetic_tier(n_acs, seed=42):
         else:
             name = f"{rng.choice(first_names)} {rng.choice(last_names)}"
         relative = f"{rng.choice(first_names)} {rng.choice(last_names)}"
-        rows.append({"id": i, "full_name": name, "full_relative_name": relative})
+        rows.append({
+            "id": i, "full_name": name, "full_relative_name": relative,
+            "state": "SYN", "ac_code": f"AC{i // SYNTHETIC_ROWS_PER_AC}",
+        })
     return rows
 
 
@@ -109,6 +119,36 @@ def score_new(rows, name, relative, algorithm, workers=1):
     return scored[:50]
 
 
+def score_grouped(rows, name, relative, algorithm, max_workers=None):
+    """Same result as score_new, but scored one cdist call per constituency
+    (state, ac_code), fanned out over a thread pool -- see
+    score_fields_batch_by_group's docstring for why this, not
+    score_fields_batch(..., workers=N), is what actually parallelizes."""
+    batch_scorer = get_batch_scorer(algorithm)
+    groups = {}
+    group_rows = {}
+    for r in rows:
+        key = (r["state"], r["ac_code"])
+        if key not in groups:
+            groups[key] = [[], []]
+            group_rows[key] = []
+        groups[key][0].append(r["full_name"])
+        groups[key][1].append(r["full_relative_name"])
+        group_rows[key].append(r)
+
+    scores_by_group, timing_by_group_ms = score_fields_batch_by_group(
+        batch_scorer, [name, relative], groups, max_workers=max_workers
+    )
+
+    scored = []
+    for key, scores in scores_by_group.items():
+        for i, r in enumerate(group_rows[key]):
+            if scores[i] == scores[i] and scores[i] >= 70:  # NaN check
+                scored.append((float(scores[i]), r["id"]))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return scored[:50], timing_by_group_ms
+
+
 def run_tier(n_acs, db_path, name="Ravi Kumar", relative="Anand Sharma", algorithm="wratio"):
     rows, source = load_tier(n_acs, db_path)
 
@@ -120,21 +160,29 @@ def run_tier(n_acs, db_path, name="Ravi Kumar", relative="Anand Sharma", algorit
     new_result = score_new(rows, name, relative, algorithm)
     new_ms = (time.perf_counter() - t0) * 1000
 
+    t0 = time.perf_counter()
+    grouped_result, timing_by_group_ms = score_grouped(rows, name, relative, algorithm)
+    grouped_ms = (time.perf_counter() - t0) * 1000
+
     return {
         "n_acs": n_acs, "rows": len(rows), "source": source,
-        "old_ms": old_ms, "new_ms": new_ms,
+        "old_ms": old_ms, "new_ms": new_ms, "grouped_ms": grouped_ms,
         "speedup": (old_ms / new_ms) if new_ms else float("inf"),
-        "old_result": old_result, "new_result": new_result,
+        "grouped_speedup": (old_ms / grouped_ms) if grouped_ms else float("inf"),
+        "old_result": old_result, "new_result": new_result, "grouped_result": grouped_result,
+        "timing_by_group_ms": timing_by_group_ms,
     }
 
 
 def main():
     db_path = os.environ.get("DB_PATH", "data/db/multi_state_2002.sqlite")
-    print(f"{'ACs':>5} {'rows':>10} {'source':>10} {'old ms':>10} {'new ms':>10} {'speedup':>9}")
+    print(f"{'ACs':>5} {'rows':>10} {'source':>10} {'old ms':>10} {'new ms':>10} "
+          f"{'grouped ms':>11} {'new x':>7} {'grouped x':>10}")
     for n_acs in TIERS:
         r = run_tier(n_acs, db_path)
         print(f"{r['n_acs']:>5} {r['rows']:>10} {r['source']:>10} "
-              f"{r['old_ms']:>10.1f} {r['new_ms']:>10.1f} {r['speedup']:>8.1f}x")
+              f"{r['old_ms']:>10.1f} {r['new_ms']:>10.1f} {r['grouped_ms']:>11.1f} "
+              f"{r['speedup']:>6.1f}x {r['grouped_speedup']:>9.1f}x")
 
 
 if __name__ == "__main__":

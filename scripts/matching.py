@@ -27,6 +27,10 @@ number:
 Neither is silently "better" -- they fail differently, which is why both are
 exposed as an explicit user choice instead of averaged into a single score.
 """
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 from rapidfuzz import fuzz, process, utils
 from rapidfuzz.distance import JaroWinkler
@@ -154,3 +158,63 @@ def score_fields_batch(batch_scorer, query_fields, record_field_lists, workers=1
     if count == 0:
         return np.full(n, np.nan, dtype=np.float32)
     return (total / count).astype(np.float32)
+
+
+def score_fields_batch_by_group(batch_scorer, query_fields, groups, max_workers=None):
+    """Vectorized batch scoring, parallelized across groups (one group per
+    constituency in practice) rather than within a single cdist call.
+
+    Why this exists, not just `score_fields_batch(..., workers=N)`: rapidfuzz's
+    own `cdist(workers=N)` parallelizes by handing out *query rows* to its
+    internal thread pool (confirmed against rapidfuzz's C++ source,
+    `process_cpp.hpp`'s `run_parallel`/`cdist_two_lists_impl` -- not assumed).
+    A name search is always exactly one query row against many candidates, so
+    `workers=N` there dispatches a single unit of work no matter what N is --
+    real multi-core parallelism for this scorer, structurally unreachable via
+    that parameter for this access pattern. The scorer does release the GIL
+    for the whole call regardless of `workers`, though, so real concurrency
+    has to be driven from outside rapidfuzz -- one `cdist(workers=1)` call per
+    group, fanned out over a plain ThreadPoolExecutor. Measured against a real
+    1.64M-row/5-AC tier: flat ~1170ms regardless of rapidfuzz's own
+    `workers=1/4/-1`, vs. ~280-390ms via this grouped approach (4-8 threads) --
+    identical output, confirmed via np.allclose.
+
+    groups: ordered mapping of {group_key: record_field_lists}, e.g.
+    {(state, ac_code): [record_names, record_relatives]} -- one entry per
+    constituency. A single-group call (e.g. a one-AC search) gets no
+    parallelism from this function by design -- there's only one cdist call
+    to run either way; that case is unaffected by this change.
+
+    Returns (scores_by_group, timing_by_group_ms): scores_by_group is
+    {group_key: float32 ndarray}, each in the same shape score_fields_batch
+    would return for that group's rows; timing_by_group_ms is
+    {group_key: elapsed_ms} for surfacing per-constituency query-time stats
+    (e.g. in /dbg's timing breakdown).
+    """
+    keys = list(groups.keys())
+    scores_by_group = {}
+    timing_by_group_ms = {}
+    if not keys:
+        return scores_by_group, timing_by_group_ms
+
+    def _score_one(key):
+        t0 = time.perf_counter()
+        scores = score_fields_batch(batch_scorer, query_fields, groups[key], workers=1)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        return key, scores, elapsed_ms
+
+    workers = max_workers or (os.cpu_count() or 1)
+    workers = max(1, min(workers, len(keys)))
+
+    if workers == 1:
+        for key in keys:
+            _, scores, elapsed_ms = _score_one(key)
+            scores_by_group[key] = scores
+            timing_by_group_ms[key] = elapsed_ms
+        return scores_by_group, timing_by_group_ms
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for key, scores, elapsed_ms in ex.map(_score_one, keys):
+            scores_by_group[key] = scores
+            timing_by_group_ms[key] = elapsed_ms
+    return scores_by_group, timing_by_group_ms

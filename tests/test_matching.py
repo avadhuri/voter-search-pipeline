@@ -12,6 +12,7 @@ from matching import (
     get_scorer,
     score_fields,
     score_fields_batch,
+    score_fields_batch_by_group,
 )
 
 
@@ -86,3 +87,53 @@ def test_score_fields_batch_all_empty_query_returns_nan():
     batch_scorer = get_batch_scorer("wratio")
     scores = score_fields_batch(batch_scorer, ["", ""], [NAMES, RELATIVES])
     assert np.all(np.isnan(scores))
+
+
+def test_grouped_scoring_matches_flat_scoring_exactly():
+    """One AC's worth of rows split into several constituency-keyed groups
+    must score identically to scoring them all in one flat call -- grouping
+    is purely a concurrency mechanism, not a different computation."""
+    batch_scorer = get_batch_scorer("wratio")
+    query_fields = ["Ravi Kumar", "Anand Sharma"]
+
+    flat_scores = score_fields_batch(batch_scorer, query_fields, [NAMES, RELATIVES])
+
+    groups = {
+        ("KA", "A001"): [NAMES[:2], RELATIVES[:2]],
+        ("KA", "A002"): [NAMES[2:4], RELATIVES[2:4]],
+        ("WB", "AC141"): [NAMES[4:], RELATIVES[4:]],
+    }
+    scores_by_group, timing_by_group_ms = score_fields_batch_by_group(
+        batch_scorer, query_fields, groups
+    )
+
+    assert set(scores_by_group) == set(groups)
+    assert set(timing_by_group_ms) == set(groups)
+    reassembled = np.concatenate([scores_by_group[k] for k in groups])
+    for e, a in zip(flat_scores, reassembled):
+        if np.isnan(e):
+            assert np.isnan(a)
+        else:
+            assert e == pytest.approx(float(a), abs=1e-3)
+
+
+def test_grouped_scoring_single_group_still_works():
+    batch_scorer = get_batch_scorer("wratio")
+    query_fields = ["Ravi Kumar", ""]
+    groups = {("KA", "A001"): [NAMES, RELATIVES]}
+    scores_by_group, timing_by_group_ms = score_fields_batch_by_group(
+        batch_scorer, query_fields, groups
+    )
+    expected = score_fields_batch(batch_scorer, query_fields, [NAMES, RELATIVES])
+    for e, a in zip(expected, scores_by_group[("KA", "A001")]):
+        assert e == pytest.approx(float(a), abs=1e-3)
+    assert ("KA", "A001") in timing_by_group_ms
+
+
+def test_grouped_scoring_empty_groups_returns_empty():
+    batch_scorer = get_batch_scorer("wratio")
+    scores_by_group, timing_by_group_ms = score_fields_batch_by_group(
+        batch_scorer, ["Ravi Kumar", ""], {}
+    )
+    assert scores_by_group == {}
+    assert timing_by_group_ms == {}
