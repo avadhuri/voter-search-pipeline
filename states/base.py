@@ -43,6 +43,7 @@ class VoterRecord:
     gender: str
     roll_year: int          # e.g. 2002 or 2025
     remark: str = ""        # human-readable note on any source-data quirk in this row
+    locality: str = ""      # village/town/area name, where the source carries one
 
 
 class StateConnector:

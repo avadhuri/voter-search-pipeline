@@ -58,7 +58,8 @@ CREATE TABLE voters (
     relation_label TEXT,
     age INTEGER,
     gender TEXT,
-    remark TEXT
+    remark TEXT,
+    locality TEXT
 );
 """
 
@@ -66,8 +67,8 @@ INSERT_SQL = """
 INSERT INTO voters (
     state, roll_year, district, ac_code, ac_name, part_no, serial_no,
     local_ref, full_name, full_relative_name, relation_code,
-    relation_label, age, gender, remark
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    relation_label, age, gender, remark, locality
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
@@ -93,7 +94,7 @@ def _records_to_rows(records):
             r.part_no, r.serial_no, r.local_ref, r.full_name,
             r.full_relative_name, r.relation_code,
             RELATION_LABELS.get(r.relation_code, r.relation_code),
-            r.age, r.gender, r.remark,
+            r.age, r.gender, r.remark, r.locality,
         )
         for r in records
     ]
