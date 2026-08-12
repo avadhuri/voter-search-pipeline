@@ -16,9 +16,9 @@ from states.haryana import (
     _part_candidates,
 )
 
-PILOT_ZIP = os.path.join(
-    os.path.dirname(__file__), "..", "data", "raw", "haryana", "HR47.zip"
-)
+RAW_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw", "haryana")
+PILOT_ZIP = os.path.join(RAW_DIR, "HR47.zip")
+HYBRID_ZIP = os.path.join(RAW_DIR, "HR02.zip")  # ArialUnicodeMS AC, unrecognized cover layout
 
 
 def test_list_constituencies_reads_real_ac_meta():
@@ -116,3 +116,41 @@ def test_parse_raw_decodes_a_real_part_into_devanagari_records():
     assert {r.gender for r in records} <= {"M", "F", ""}
     flagged = sum(1 for r in records if r.remark)
     assert flagged / len(records) < 0.01
+
+    # The cover page's village field, constant across every row of the part.
+    assert {r.locality for r in records} == {"सन्तोख माजरा"}
+
+
+@pytest.mark.skipif(not os.path.exists(PILOT_ZIP), reason="pilot raw data not downloaded")
+def test_locality_varies_by_part_within_the_same_ac():
+    connector = HaryanaConnector()
+    ac = next(c for c in connector.list_constituencies() if c.ac_code == "HR47")
+
+    with zipfile.ZipFile(PILOT_ZIP) as src:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as two:
+            two.writestr("part0001.pdf", src.read("part0001.pdf"))
+            two.writestr("part0002.pdf", src.read("part0002.pdf"))
+    records = connector.parse_raw(buf.getvalue(), ac, roll_year=2002)
+
+    localities_by_part = {r.part_no: r.locality for r in records}
+    assert localities_by_part[1] == "सन्तोख माजरा"
+    assert localities_by_part[2] == "राजौन्द"
+
+
+@pytest.mark.skipif(not os.path.exists(HYBRID_ZIP), reason="pilot raw data not downloaded")
+def test_locality_is_blank_rather_than_guessed_for_an_unrecognized_cover_layout():
+    # AC02 is one of the 3 hybrid ArialUnicodeMS ACs -- its cover page doesn't
+    # match COVER_FIELD_LABELS at all, so locality should come back empty
+    # rather than picking up an unrelated field.
+    connector = HaryanaConnector()
+    ac = next(c for c in connector.list_constituencies() if c.ac_code == "HR02")
+
+    with zipfile.ZipFile(HYBRID_ZIP) as src:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as one:
+            one.writestr("part0001.pdf", src.read("part0001.pdf"))
+    records = connector.parse_raw(buf.getvalue(), ac, roll_year=2002)
+
+    assert records
+    assert {r.locality for r in records} == {""}

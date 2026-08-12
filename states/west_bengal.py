@@ -358,6 +358,60 @@ def _split_row(row, bounds):
 
 
 # --------------------------------------------------------------------------
+# cover-page locality
+# --------------------------------------------------------------------------
+#
+# Each part's first page is a cover sheet, not part of the roll table (see
+# _page_rows below -- a page with no "1 2 3 ..." row and no carried-forward
+# geometry contributes no rows at all). For the Latin-typeset Kolkata ACs it
+# carries a "Village/Area/Road:" field, decodable through the same font
+# patch as the roll table itself. Found the same way the column-number
+# anchor is found above: split each visual row into whitespace-separated
+# runs and look for the one matching the label text, then take the next run
+# on that row as its value. Confirmed only against a Latin-typeset fixture
+# (AC146) -- an unmatched label just leaves locality empty, the same
+# don't-guess discipline as the rest of this module, rather than assuming
+# Bengali-typeset cover pages share the layout.
+
+COVER_LOCALITY_LABEL = re.compile(r"^village\s*/\s*area\s*/\s*road\s*:?$", re.IGNORECASE)
+
+
+_LIST_MARKER = re.compile(r"^\d+\)$")
+
+
+def _parse_cover_locality(page):
+    """"Village/Area/Road" value off a part's cover page, or "" if this page
+    doesn't carry a recognizable one.
+
+    The value sits beside the label on the same row when it's short (e.g.
+    "PARK STREET"), but wraps onto the next row, prefixed with a "1)" list
+    marker, when it's long enough to need one (e.g. "1) BAGHBAZAR STREET
+    (PREMISES NO.22/2A TO 30/2)") -- both confirmed against real fixtures
+    (AC146, AC141 respectively).
+    """
+    rows = _rows_of(page.chars)
+    row_texts = [[_cell_text(r) for r in _runs(row)] for row in rows]
+    for i, texts in enumerate(row_texts):
+        for j, text in enumerate(texts):
+            if not COVER_LOCALITY_LABEL.match(text):
+                continue
+            # the trailing ":" sometimes sits far enough from the label to be
+            # its own whitespace-run rather than part of the label token, and
+            # the value itself is often more than one run ("PARK" "STREET")
+            k = j + 1
+            while k < len(texts) and texts[k] in ("", ":"):
+                k += 1
+            rest = texts[k:]
+            if not rest and i + 1 < len(row_texts):
+                rest = row_texts[i + 1]
+            if rest and _LIST_MARKER.match(rest[0]):
+                rest = rest[1:]
+            if rest and all(t and not _has_undecoded(t) for t in rest):
+                return " ".join(rest)
+    return ""
+
+
+# --------------------------------------------------------------------------
 # record extraction
 # --------------------------------------------------------------------------
 
@@ -587,13 +641,18 @@ class WestBengalConnector(StateConnector):
 
     def _parse_part(self, pdf_bytes, ac, roll_year, part_no, member):
         records, geometry = [], None
+        locality = None
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
+                if locality is None and page.chars:
+                    locality = _parse_cover_locality(page) or None
                 rows, geometry = _page_rows(page, geometry)
                 for cells in rows:
                     records.append(
                         self._record(cells, ac, roll_year, part_no, member)
                     )
+        for rec in records:
+            rec.locality = locality or ""
         return records
 
     def _record(self, cells, ac, roll_year, part_no, member):

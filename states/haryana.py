@@ -55,10 +55,14 @@ roll. Those 46 ACs need an OCR pipeline, which is out of scope here.
 
 TABLE LAYOUT
 ------------
-Page 1 of each part PDF is a cover/summary page. Every subsequent page
-carries an 8-column ruled table whose columns are recovered from the PDF's
-own vertical ruling lines, keyed to the "[1]".."[8]" header markers printed
-on each page, so nothing is hardcoded to a fixed x-offset:
+Page 1 of each part PDF is a cover/summary page -- its section 3
+("(मुख्य) मतदान केन्द्र का विवरण") carries this part's village/tehsil,
+parsed into VoterRecord.locality (constant for every row in the part) by
+_parse_cover_locality(), see that function's docstring for the label:value
+layout and which ACs it doesn't recognize. Every subsequent page carries an
+8-column ruled table whose columns are recovered from the PDF's own
+vertical ruling lines, keyed to the "[1]".."[8]" header markers printed on
+each page, so nothing is hardcoded to a fixed x-offset:
 
   [1] क्रम संख्या        serial no
   [2] मकान संख्या        house no          -> local_ref (matches Karnataka's)
@@ -262,6 +266,73 @@ def _cells(words, bounds):
     return [cells for _, cells in rows]
 
 
+# --------------------------------------------------------------------------
+# cover-page locality
+# --------------------------------------------------------------------------
+#
+# Page 1 of every part PDF is a cover page (no [1]..[8] table markers, so
+# _column_bounds() returns None for it -- see _parse_pages()). Its section
+# "3. (मुख्य) मतदान केन्द्र का विवरण" prints village/Hadbast/circle/tehsil/
+# district as label:value pairs in a right-hand column (label+value words
+# both sitting at x0 in ~300-600), confirmed against real fixtures
+# (data/raw/haryana/HR47.zip parts 1-2, layout identical across parts of the
+# same AC). A separate, unrelated field ("मतदान केन्द्र की संख्या व नाम",
+# the polling-center number/name) sits in a left column at x0 < 300 and is
+# excluded just by restricting to this band -- no label matching needed to
+# tell them apart.
+#
+# Label and value sit on the same text row for every field except तहसील
+# (tehsil), which splits across a ~2pt top gap -- covered by clustering rows
+# with a few points of slack the same way _cells() clusters table rows.
+#
+# Not every AC's cover page uses this layout -- e.g. AC02/31/35 (the hybrid
+# ArialUnicodeMS ACs) lay their cover page out completely differently. When
+# none of these labels match, locality comes back "" for that part rather
+# than guessing -- same "don't guess" discipline as _normalize() elsewhere
+# in this module.
+COVER_X0_MIN, COVER_X0_MAX = 300.0, 600.0
+COVER_ROW_TOLERANCE = 6.0
+
+COVER_FIELD_LABELS = [
+    ("village", re.compile(r"^ग्राम\s*/\s*शहर\s*का\s*नाम\s+(.+)$")),
+    ("hadbast", re.compile(r"^हदबस्त\s*संख्या\s+(.+)$")),
+    ("patwar_circle", re.compile(r"^पटवार\s*सर्कल\s+(.+)$")),
+    ("kanungo_circle", re.compile(r"^कानूनगो\s*सर्कल\s+(.+)$")),
+    ("tehsil", re.compile(r"^तहसील\s+(.+)$")),
+    ("district", re.compile(r"^जिला\s+(.+)$")),
+]
+
+
+def _parse_cover_locality(words):
+    """village/town name off a cover page's section-3 label:value block, or
+    "" if this page's layout doesn't match the recognized labels."""
+    band = [w for w in words if COVER_X0_MIN <= w["x0"] < COVER_X0_MAX]
+
+    rows = []
+    for w in sorted(band, key=lambda w: (w["top"], w["x0"])):
+        text = w["text"]
+        if "DK-RAJ" in w.get("fontname", ""):
+            text, _ = dkraj_decode(text)
+        text = _clean(text)
+        if not text or text == ":":
+            continue
+        if rows and w["top"] - rows[-1][0] <= COVER_ROW_TOLERANCE:
+            rows[-1][1].append((w["x0"], text))
+        else:
+            rows.append((w["top"], [(w["x0"], text)]))
+
+    fields = {}
+    for _, parts in rows:
+        line = _clean(" ".join(t for _, t in sorted(parts)))
+        for field, pattern in COVER_FIELD_LABELS:
+            m = pattern.match(line)
+            if m:
+                fields[field] = _clean(m.group(1))
+                break
+
+    return fields.get("village") or fields.get("tehsil", "")
+
+
 def _cell_text(cells, col, remarks):
     """Join a cell's words left-to-right, transcoding the DK-RAJ ones. Words
     in a normal Unicode font (the EPIC numbers are set in Times-Roman) are
@@ -420,16 +491,23 @@ class HaryanaConnector(StateConnector):
 
     def _parse_pages(self, pdf_bytes, part_no, suffix_remark, ac, roll_year):
         records = []
+        locality = ""
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
                 words = page.extract_words(extra_attrs=["fontname"])
                 bounds = _column_bounds(page, words)
                 if bounds is None:
-                    continue  # cover/summary page, carries no voter table
+                    # cover/summary page, carries no voter table -- but does
+                    # carry this part's locality, constant for every row in it
+                    if not locality:
+                        locality = _parse_cover_locality(words)
+                    continue
                 for cells in _cells(words, bounds):
                     rec = self._parse_row(cells, part_no, suffix_remark, ac, roll_year)
                     if rec is not None:
                         records.append(rec)
+        for rec in records:
+            rec.locality = locality
         return records
 
     def _parse_row(self, cells, part_no, suffix_remark, ac, roll_year):
