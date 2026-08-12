@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "State-pluggable connectors, fuzzy matching, and a search CLI for India's digitized 2002-era electoral rolls."
 requires-python = ">=3.9"
 dependencies = [
+    "numpy==2.0.2",
     "rapidfuzz==3.13.0",
     "indic-transliteration==2.3.82",
     "pdfplumber==0.11.8",
@@ -17,7 +18,6 @@ dependencies = [
 
 [project.optional-dependencies]
 eval = [
-    "numpy==2.0.2",
     "scikit-learn==1.6.1",
     "sentence-transformers==5.1.2",
     "torch==2.8.0",
