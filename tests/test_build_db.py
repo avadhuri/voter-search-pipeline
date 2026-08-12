@@ -1,6 +1,7 @@
 import sqlite3
 
 import build_db
+from states.base import Constituency, StateConnector, VoterRecord
 from states.karnataka import KarnatakaConnector
 
 A085_ROWS = (
@@ -145,4 +146,82 @@ def test_build_per_ac_matches_combined(tmp_path, monkeypatch):
     }
     assert ac_index_rows["A012"] == ("A012", "c1", 0, 1, 0)
     assert ac_index_rows["A085"] == ("A085", "c1", 0, 2, 0)
+
+    # Karnataka's source CSVs carry no locality column -- catalog_locality
+    # table must exist (schema always created) but stay empty here.
+    locality_count = cat_conn.execute("SELECT COUNT(*) FROM catalog_locality").fetchone()[0]
+    assert locality_count == 0
+    cat_conn.close()
+
+
+class _FakeLocalityConnector(StateConnector):
+    """Minimal connector with locality data, for exercising catalog_locality's
+    happy path -- Karnataka's real fixtures have no locality column to test with."""
+
+    state_id = "fakestate"
+
+    def list_constituencies(self):
+        return [Constituency(ac_code="F001", ac_name="Fake AC", district="Fake District")]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        return [
+            VoterRecord(
+                state=self.state_id, district=ac.district, ac_code=ac.ac_code,
+                ac_name=ac.ac_name, part_no=1, serial_no=1, local_ref="",
+                full_name="Test Person", full_relative_name="Test Relative",
+                relation_code="F", age=30, gender="M", roll_year=roll_year,
+                locality="Fake Village",
+            ),
+            VoterRecord(
+                state=self.state_id, district=ac.district, ac_code=ac.ac_code,
+                ac_name=ac.ac_name, part_no=1, serial_no=2, local_ref="",
+                full_name="Another Person", full_relative_name="Another Relative",
+                relation_code="H", age=40, gender="F", roll_year=roll_year,
+                locality="Fake Village",
+            ),
+        ]
+
+
+def test_build_per_ac_populates_catalog_locality(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "F001.csv").write_text("placeholder\n")
+
+    monkeypatch.setitem(
+        build_db.STATE_CONNECTORS,
+        "fakestate",
+        {
+            "connector_cls": _FakeLocalityConnector,
+            "label": "Fake State",
+            "raw_dir": str(raw_dir),
+            "raw_glob": "*.csv",
+            "script": "latin",
+        },
+    )
+
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["fakestate"], str(out_dir), contract="c1", patch=0)
+
+    catalog_path = out_dir / "catalog" / "fakestate.sqlite"
+    cat_conn = sqlite3.connect(catalog_path)
+
+    coverage_row = cat_conn.execute(
+        "SELECT locality_coverage FROM state_coverage WHERE state_id = 'fakestate'"
+    ).fetchone()
+    assert coverage_row == ("full",)
+
+    has_locality = cat_conn.execute(
+        "SELECT has_locality FROM ac_index WHERE ac_code = 'F001'"
+    ).fetchone()
+    assert has_locality == (1,)
+
+    localities = {
+        row[0] for row in cat_conn.execute(
+            "SELECT locality FROM catalog_locality WHERE state = 'fakestate' AND ac_code = 'F001'"
+        )
+    }
+    assert localities == {"Fake Village"}
     cat_conn.close()
