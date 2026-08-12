@@ -1,9 +1,18 @@
 import os
 import sys
 
+import numpy as np
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from matching import ALGORITHMS, get_scorer, score_fields
+from matching import (
+    ALGORITHMS,
+    get_batch_scorer,
+    get_scorer,
+    score_fields,
+    score_fields_batch,
+)
 
 
 def test_both_algorithms_registered():
@@ -39,3 +48,41 @@ def test_score_fields_skips_empty_query_fields():
 def test_score_fields_all_empty_returns_none():
     scorer = get_scorer("wratio")
     assert score_fields(scorer, ["", ""], ["a", "b"]) is None
+
+
+NAMES = ["Shivaram", "Ravi Kumar", "Kumar Ravi", "Ab", "Sita Devi", "", "Shivram", None]
+RELATIVES = ["Ramesh Rao", "", "Suresh", "Sh", None, "Geeta", "Shivram", "Anand"]
+
+
+def test_batch_scoring_matches_per_row_scoring_exactly():
+    """The whole point of the vectorized cdist path is identical output to
+    the old per-row loop -- not an approximation."""
+    for algo in ALGORITHMS:
+        scorer = get_scorer(algo)
+        batch_scorer = get_batch_scorer(algo)
+        for query in ["Shivaram", "Ravi Kumar", "Kumar Ravi"]:
+            expected = [
+                score_fields(scorer, [query, ""], [n, r])
+                for n, r in zip(NAMES, RELATIVES)
+            ]
+            actual = score_fields_batch(batch_scorer, [query, ""], [NAMES, RELATIVES])
+            for e, a in zip(expected, actual):
+                assert e == pytest.approx(float(a), abs=1e-3)
+
+
+def test_batch_scoring_two_query_fields_matches_mean_of_per_row():
+    scorer = get_scorer("wratio")
+    batch_scorer = get_batch_scorer("wratio")
+    expected = [
+        score_fields(scorer, ["Ravi Kumar", "Anand"], [n, r])
+        for n, r in zip(NAMES, RELATIVES)
+    ]
+    actual = score_fields_batch(batch_scorer, ["Ravi Kumar", "Anand"], [NAMES, RELATIVES])
+    for e, a in zip(expected, actual):
+        assert e == pytest.approx(float(a), abs=1e-3)
+
+
+def test_score_fields_batch_all_empty_query_returns_nan():
+    batch_scorer = get_batch_scorer("wratio")
+    scores = score_fields_batch(batch_scorer, ["", ""], [NAMES, RELATIVES])
+    assert np.all(np.isnan(scores))
