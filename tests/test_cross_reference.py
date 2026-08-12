@@ -1,8 +1,4 @@
-import os
 import sqlite3
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 import build_db
 from cross_reference import find_candidates

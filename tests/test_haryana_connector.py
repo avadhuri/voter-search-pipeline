@@ -1,11 +1,8 @@
 import io
 import os
-import sys
 import zipfile
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from states.base import Constituency
 from states.haryana import (
