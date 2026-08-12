@@ -1,8 +1,11 @@
 """
-Parse raw state roll files into one normalized, multi-state SQLite database
-with an FTS5 index for search. Supports a single AC (the original POC path),
-one state's ACs combined (the original --combine path, Karnataka-only), and
-multiple states combined into one DB (--states).
+Parse raw state roll files into normalized SQLite database(s). Supports a
+single AC (the original POC path), one state's ACs combined (the original
+--combine path, Karnataka-only), multiple states combined into one DB
+(--states), and one small file per (state, ac_code) plus a per-state
+catalog (--states ... --per-ac) -- the native artifact set for per-AC-file
+serving (see voter_search_engine's per-AC-file-serving plan; no combined DB
+is built or needed for that path).
 
 Column/row parsing lives in each states/<state>.py connector's parse_raw()
 so this script and the download pipeline share one source of truth for each
@@ -22,9 +25,17 @@ Usage:
 
     build_db.py --states karnataka,west_bengal <sqlite_db_path>
         Build/overwrite one combined DB across every listed state, each
-        read from its states/registry.py raw_dir/raw_glob. This is what
-        the running app's DB_PATH should point at once more than one state
-        has data.
+        read from its states/registry.py raw_dir/raw_glob. Still useful for
+        local CLI/dev use (scripts/search.py, ad hoc queries) even though
+        production serving has moved to --per-ac below.
+
+    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0]
+        Build one <out_dir>/<state>/<ac_code>-<contract>.p<patch>.sqlite per
+        AC, plus one <out_dir>/catalog/<state>.sqlite per state (a small
+        state_coverage + ac_index summary, no voter rows). contract is the
+        schema/shape version consumed by the serving app; patch is a content
+        revision within a fixed contract, bumped explicitly (not
+        auto-detected) whenever an AC's data is rebuilt/republished.
 """
 import datetime
 import glob
@@ -39,7 +50,7 @@ from states.karnataka import KarnatakaConnector
 from states.registry import STATE_CONNECTORS
 from transliteration import backfill_latin_columns
 
-SCHEMA = """
+VOTERS_SCHEMA = """
 DROP TABLE IF EXISTS voters;
 CREATE TABLE voters (
     id INTEGER PRIMARY KEY,
@@ -62,7 +73,9 @@ CREATE TABLE voters (
     remark TEXT,
     locality TEXT
 );
+"""
 
+SCHEMA = VOTERS_SCHEMA + """
 DROP TABLE IF EXISTS state_coverage;
 CREATE TABLE state_coverage (
     state_id TEXT PRIMARY KEY,
@@ -71,6 +84,32 @@ CREATE TABLE state_coverage (
     acs_digitized INTEGER,
     locality_coverage TEXT,
     built_at TEXT
+);
+"""
+
+CATALOG_SCHEMA = """
+DROP TABLE IF EXISTS state_coverage;
+CREATE TABLE state_coverage (
+    state_id TEXT PRIMARY KEY,
+    label TEXT,
+    acs_total INTEGER,
+    acs_digitized INTEGER,
+    locality_coverage TEXT,
+    built_at TEXT
+);
+
+DROP TABLE IF EXISTS ac_index;
+CREATE TABLE ac_index (
+    state TEXT,
+    ac_code TEXT,
+    ac_name TEXT,
+    district TEXT,
+    contract TEXT,
+    patch INTEGER,
+    row_count INTEGER,
+    file_size_bytes INTEGER,
+    has_locality INTEGER,
+    PRIMARY KEY (state, ac_code, contract)
 );
 """
 
@@ -86,6 +125,13 @@ STATE_COVERAGE_INSERT_SQL = """
 INSERT INTO state_coverage (
     state_id, label, acs_total, acs_digitized, locality_coverage, built_at
 ) VALUES (?,?,?,?,?,?)
+"""
+
+AC_INDEX_INSERT_SQL = """
+INSERT INTO ac_index (
+    state, ac_code, ac_name, district, contract, patch,
+    row_count, file_size_bytes, has_locality
+) VALUES (?,?,?,?,?,?,?,?,?)
 """
 
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
@@ -129,6 +175,19 @@ def _finalize(conn):
         );
         INSERT INTO voters_fts(rowid, full_name, full_relative_name)
             SELECT id, full_name, full_relative_name FROM voters;
+        """
+    )
+    conn.commit()
+
+
+def _finalize_voters_only(conn):
+    """Same as _finalize but for a per-AC file: indexes only, no voters_fts --
+    confirmed dead weight for this shape (app.py/search.py/cross_reference.py
+    never query it)."""
+    conn.executescript(
+        """
+        CREATE INDEX idx_voters_ac_part ON voters(ac_code, part_no, serial_no);
+        CREATE INDEX idx_voters_district ON voters(district);
         """
     )
     conn.commit()
@@ -244,9 +303,101 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
     conn.close()
 
 
+def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002):
+    """Build one small <ac_code>-<contract>.p<patch>.sqlite per (state,
+    ac_code), plus one small catalog.sqlite per state -- the native per-AC
+    serving artifact set (no combined DB is built or needed for this path;
+    see voter_search_engine's per-AC-file-serving plan).
+
+    Reuses build_multi_state()'s ingestion loop shape: for each raw file
+    the connector already hands back one AC's complete record list, so
+    this just writes that list into its own fresh connection instead of
+    appending into one shared combined connection. contract/patch are
+    explicit inputs, not auto-detected from content -- republishing an
+    AC's data (bug fix, added locality, re-digitized) is a deliberate act
+    of bumping --patch, not something this script infers on its own.
+    """
+    unknown = [s for s in state_ids if s not in STATE_CONNECTORS]
+    if unknown:
+        raise SystemExit(f"Unknown state(s): {', '.join(unknown)}. Known: {', '.join(STATE_CONNECTORS)}")
+
+    built_at = datetime.datetime.utcnow().isoformat()
+    catalog_dir = os.path.join(out_dir, "catalog")
+    os.makedirs(catalog_dir, exist_ok=True)
+
+    grand_total = 0
+    for state_id in state_ids:
+        info = STATE_CONNECTORS[state_id]
+        connector = info["connector_cls"]()
+        ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
+        paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
+        state_dir = os.path.join(out_dir, state_id)
+        os.makedirs(state_dir, exist_ok=True)
+
+        state_total = 0
+        acs_with_locality = set()
+        ac_index_rows = []
+        for path in paths:
+            ac_code = os.path.splitext(os.path.basename(path))[0]
+            ac = _resolve_ac(ac_code, ac_lookup)
+            with open(path, "rb") as f:
+                raw = f.read()
+            records = connector.parse_raw(raw, ac, roll_year)
+
+            ac_db_path = os.path.join(state_dir, f"{ac_code}-{contract}.p{patch}.sqlite")
+            ac_conn = sqlite3.connect(ac_db_path)
+            ac_conn.executescript(VOTERS_SCHEMA)
+            ac_conn.executemany(INSERT_SQL, _records_to_rows(records))
+            backfill_latin_columns(ac_conn, state_ids=[state_id])
+            _finalize_voters_only(ac_conn)
+            ac_conn.close()
+
+            has_locality = any(r.locality for r in records)
+            if has_locality:
+                acs_with_locality.add(ac_code)
+            ac_index_rows.append((
+                state_id, ac_code, ac.ac_name, ac.district, contract, patch,
+                len(records), os.path.getsize(ac_db_path), int(has_locality),
+            ))
+            state_total += len(records)
+            print(f"  [{state_id}] {ac_code}: {len(records)} records -> {ac_db_path}")
+
+        print(f"{state_id}: {state_total} records across {len(paths)} AC file(s)")
+        grand_total += state_total
+
+        if not paths:
+            locality_coverage = "none"
+        elif len(acs_with_locality) == len(paths):
+            locality_coverage = "full"
+        elif acs_with_locality:
+            locality_coverage = "partial"
+        else:
+            locality_coverage = "none"
+
+        catalog_path = os.path.join(catalog_dir, f"{state_id}.sqlite")
+        cat_conn = sqlite3.connect(catalog_path)
+        cat_conn.executescript(CATALOG_SCHEMA)
+        cat_conn.execute(STATE_COVERAGE_INSERT_SQL, (
+            state_id, info["label"], len(ac_lookup), len(paths),
+            locality_coverage, built_at,
+        ))
+        cat_conn.executemany(AC_INDEX_INSERT_SQL, ac_index_rows)
+        cat_conn.commit()
+        cat_conn.close()
+        print(f"  wrote catalog {catalog_path}")
+
+    print(f"\nLoaded {grand_total} records across {len(state_ids)} state(s) into {out_dir} (per-AC).")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 4 and sys.argv[1] == "--combine":
         build_combined(sys.argv[2], sys.argv[3])
+    elif "--per-ac" in sys.argv and "--states" in sys.argv:
+        state_ids = sys.argv[sys.argv.index("--states") + 1].split(",")
+        out_dir = sys.argv[sys.argv.index("--per-ac") + 1]
+        contract = sys.argv[sys.argv.index("--contract") + 1] if "--contract" in sys.argv else "c1"
+        patch = int(sys.argv[sys.argv.index("--patch") + 1]) if "--patch" in sys.argv else 0
+        build_per_ac(state_ids, out_dir, contract=contract, patch=patch)
     elif len(sys.argv) == 4 and sys.argv[1] == "--states":
         build_multi_state(sys.argv[2].split(","), sys.argv[3])
     elif len(sys.argv) == 3:
