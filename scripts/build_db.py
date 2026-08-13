@@ -29,19 +29,27 @@ Usage:
         local CLI/dev use (scripts/search.py, ad hoc queries) even though
         production serving has moved to --per-ac below.
 
-    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0]
+    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0] [--workers N]
         Build one <out_dir>/<state>/<ac_code>-<contract>.p<patch>.sqlite per
         AC, plus one <out_dir>/catalog/<state>.sqlite per state (a small
         state_coverage + ac_index summary, no voter rows). contract is the
         schema/shape version consumed by the serving app; patch is a content
         revision within a fixed contract, bumped explicitly (not
-        auto-detected) whenever an AC's data is rebuilt/republished.
+        auto-detected) whenever an AC's data is rebuilt/republished. Each
+        AC's parse+write is independent (own raw file in, own sqlite file
+        out) so this fans out across a process pool -- --workers caps it
+        (default: cpu_count - 1). An AC whose output file already exists
+        and was fully finalized by a prior run is skipped, not rebuilt --
+        makes an interrupted run resumable by just re-running the same
+        command, and lets a bigger --workers value be applied retroactively
+        without redoing already-finished ACs.
 """
 import datetime
 import glob
 import os
 import sqlite3
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -303,23 +311,105 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
     conn.close()
 
 
-def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002):
+def _ac_output_is_complete(ac_db_path):
+    """True if ac_db_path exists and was fully finalized by a prior run --
+    detected by the presence of the index _finalize_voters_only() creates
+    last, not just file existence (a process killed mid-write, e.g. Ctrl-C
+    or an OOM, leaves a file on disk that opens fine but was never
+    finalized). Used to make a --per-ac run resumable: re-running the same
+    command after an interruption skips every AC a prior run actually
+    finished instead of redoing it."""
+    if not os.path.exists(ac_db_path):
+        return False
+    try:
+        conn = sqlite3.connect(ac_db_path)
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_voters_ac_part'"
+            ).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError:
+        return False
+
+
+def _build_one_ac(task):
+    """Runs in a worker process (see build_per_ac's ProcessPoolExecutor) --
+    parses one AC's raw file and writes its own small sqlite file. Takes a
+    single tuple arg (not **kwargs) since ProcessPoolExecutor.submit pickles
+    whatever it's given, and a plain tuple keeps that unambiguous. Every
+    input is passed explicitly (connector_cls, ac metadata, roll_year)
+    rather than re-derived from STATE_CONNECTORS/globals inside the worker
+    -- a spawned process gets a fresh import of this module, so it would
+    only see the *unpatched* registry, silently breaking callers (e.g.
+    tests) that monkeypatch STATE_CONNECTORS in the parent process.
+
+    Independent of every other AC's work -- own output file, own sqlite
+    connection, no shared state -- which is what makes this safe to fan
+    out across processes at all. build_per_ac() aggregates the per-AC
+    results (state_total, ac_index_rows, acs_with_locality) after every
+    future resolves, back in the parent."""
+    state_id, connector_cls, path, ac_db_path, contract, patch, ac, roll_year = task
+    ac_code = ac.ac_code
+
+    if _ac_output_is_complete(ac_db_path):
+        conn = sqlite3.connect(ac_db_path)
+        try:
+            row_count = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
+            has_locality = conn.execute(
+                "SELECT 1 FROM voters WHERE locality IS NOT NULL AND locality != '' LIMIT 1"
+            ).fetchone() is not None
+        finally:
+            conn.close()
+        return {
+            "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
+            "row_count": row_count, "file_size_bytes": os.path.getsize(ac_db_path),
+            "has_locality": has_locality, "skipped": True,
+        }
+
+    connector = connector_cls()
+    with open(path, "rb") as f:
+        raw = f.read()
+    records = connector.parse_raw(raw, ac, roll_year)
+
+    ac_conn = sqlite3.connect(ac_db_path)
+    ac_conn.executescript(VOTERS_SCHEMA)
+    ac_conn.executemany(INSERT_SQL, _records_to_rows(records))
+    backfill_latin_columns(ac_conn, state_ids=[state_id])
+    _finalize_voters_only(ac_conn)
+    ac_conn.close()
+
+    has_locality = any(r.locality for r in records)
+    return {
+        "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
+        "row_count": len(records), "file_size_bytes": os.path.getsize(ac_db_path),
+        "has_locality": has_locality, "skipped": False,
+    }
+
+
+def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, workers=None):
     """Build one small <ac_code>-<contract>.p<patch>.sqlite per (state,
     ac_code), plus one small catalog.sqlite per state -- the native per-AC
     serving artifact set (no combined DB is built or needed for this path;
     see voter_search_engine's per-AC-file-serving plan).
 
-    Reuses build_multi_state()'s ingestion loop shape: for each raw file
-    the connector already hands back one AC's complete record list, so
-    this just writes that list into its own fresh connection instead of
-    appending into one shared combined connection. contract/patch are
-    explicit inputs, not auto-detected from content -- republishing an
-    AC's data (bug fix, added locality, re-digitized) is a deliberate act
-    of bumping --patch, not something this script infers on its own.
+    Each AC's parse+write is independent (own raw file in, own sqlite file
+    out, no shared connection) -- fanned out across a ProcessPoolExecutor
+    rather than run one at a time, since this is CPU-bound (legacy-font
+    PDF decoding for Devanagari states, transliteration backfill for all)
+    and a single-threaded loop leaves every other core idle for the whole
+    build. contract/patch are explicit inputs, not auto-detected from
+    content -- republishing an AC's data (bug fix, added locality,
+    re-digitized) is a deliberate act of bumping --patch, not something
+    this script infers on its own.
     """
     unknown = [s for s in state_ids if s not in STATE_CONNECTORS]
     if unknown:
         raise SystemExit(f"Unknown state(s): {', '.join(unknown)}. Known: {', '.join(STATE_CONNECTORS)}")
+
+    if workers is None:
+        workers = max(1, (os.cpu_count() or 2) - 1)
 
     built_at = datetime.datetime.utcnow().isoformat()
     catalog_dir = os.path.join(out_dir, "catalog")
@@ -328,41 +418,42 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002):
     grand_total = 0
     for state_id in state_ids:
         info = STATE_CONNECTORS[state_id]
-        connector = info["connector_cls"]()
+        connector_cls = info["connector_cls"]
+        connector = connector_cls()
         ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_dir = os.path.join(out_dir, state_id)
         os.makedirs(state_dir, exist_ok=True)
 
-        state_total = 0
-        acs_with_locality = set()
-        ac_index_rows = []
+        tasks = []
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
             ac = _resolve_ac(ac_code, ac_lookup)
-            with open(path, "rb") as f:
-                raw = f.read()
-            records = connector.parse_raw(raw, ac, roll_year)
-
             ac_db_path = os.path.join(state_dir, f"{ac_code}-{contract}.p{patch}.sqlite")
-            ac_conn = sqlite3.connect(ac_db_path)
-            ac_conn.executescript(VOTERS_SCHEMA)
-            ac_conn.executemany(INSERT_SQL, _records_to_rows(records))
-            backfill_latin_columns(ac_conn, state_ids=[state_id])
-            _finalize_voters_only(ac_conn)
-            ac_conn.close()
+            tasks.append((state_id, connector_cls, path, ac_db_path, contract, patch, ac, roll_year))
 
-            has_locality = any(r.locality for r in records)
-            if has_locality:
-                acs_with_locality.add(ac_code)
-            ac_index_rows.append((
-                state_id, ac_code, ac.ac_name, ac.district, contract, patch,
-                len(records), os.path.getsize(ac_db_path), int(has_locality),
-            ))
-            state_total += len(records)
-            print(f"  [{state_id}] {ac_code}: {len(records)} records -> {ac_db_path}")
+        results = []
+        pool_size = max(1, min(workers, len(tasks) or 1))
+        with ProcessPoolExecutor(max_workers=pool_size) as pool:
+            futures = [pool.submit(_build_one_ac, t) for t in tasks]
+            for fut in as_completed(futures):
+                result = fut.result()
+                results.append(result)
+                tag = "skip (already built)" if result["skipped"] else "built"
+                print(f"  [{state_id}] {result['ac_code']} ({tag}): {result['row_count']} records")
 
-        print(f"{state_id}: {state_total} records across {len(paths)} AC file(s)")
+        results.sort(key=lambda r: r["ac_code"])
+        state_total = sum(r["row_count"] for r in results)
+        acs_with_locality = {r["ac_code"] for r in results if r["has_locality"]}
+        ac_index_rows = [
+            (
+                state_id, r["ac_code"], r["ac_name"], r["district"], contract, patch,
+                r["row_count"], r["file_size_bytes"], int(r["has_locality"]),
+            )
+            for r in results
+        ]
+
+        print(f"{state_id}: {state_total} records across {len(paths)} AC file(s) ({pool_size} worker(s))")
         grand_total += state_total
 
         if not paths:
@@ -397,7 +488,8 @@ if __name__ == "__main__":
         out_dir = sys.argv[sys.argv.index("--per-ac") + 1]
         contract = sys.argv[sys.argv.index("--contract") + 1] if "--contract" in sys.argv else "c1"
         patch = int(sys.argv[sys.argv.index("--patch") + 1]) if "--patch" in sys.argv else 0
-        build_per_ac(state_ids, out_dir, contract=contract, patch=patch)
+        workers = int(sys.argv[sys.argv.index("--workers") + 1]) if "--workers" in sys.argv else None
+        build_per_ac(state_ids, out_dir, contract=contract, patch=patch, workers=workers)
     elif len(sys.argv) == 4 and sys.argv[1] == "--states":
         build_multi_state(sys.argv[2].split(","), sys.argv[3])
     elif len(sys.argv) == 3:

@@ -120,9 +120,12 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 # in place rather than publishing a new patch revision alongside it. Fine
 # for the current single-collaborator, small-scale workflow; revisit if
 # that ever needs to change (e.g. republishing needs an old patch kept
-# live for in-flight requests).
-build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (STATES=a,b,c, default karnataka,west_bengal,haryana)
-	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(AC_DB_LOCAL_DIR)
+# live for in-flight requests). WORKERS=N caps the process pool build_db.py
+# fans per-AC parsing out across (default: cpu_count - 1); an interrupted
+# run is safe to just re-run -- already-finalized AC files are skipped, not
+# rebuilt.
+build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (STATES=a,b,c, default karnataka,west_bengal,haryana; WORKERS=n)
+	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(AC_DB_LOCAL_DIR) $(if $(WORKERS),--workers $(WORKERS),)
 
 # Pushes newly-built per-AC data to the dev bucket only -- see
 # GCS_AC_BUCKET_DEV's comment above for why there's no prod equivalent
