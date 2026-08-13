@@ -111,6 +111,20 @@ CREATE TABLE ac_index (
     has_locality INTEGER,
     PRIMARY KEY (state, ac_code, contract)
 );
+
+-- Distinct village/locality strings per AC, needed by the serving app's
+-- picker (free-text locality search over every AC's label, rendered before
+-- any AC/per-AC-file is fetched -- see VoterRecord.locality). Small (a few
+-- hundred distinct strings per AC at most), so it stays in the eagerly-
+-- downloaded per-state catalog rather than requiring every state's per-AC
+-- files to be present just to power AC discovery.
+DROP TABLE IF EXISTS catalog_locality;
+CREATE TABLE catalog_locality (
+    state TEXT,
+    ac_code TEXT,
+    locality TEXT,
+    PRIMARY KEY (state, ac_code, locality)
+);
 """
 
 INSERT_SQL = """
@@ -132,6 +146,10 @@ INSERT INTO ac_index (
     state, ac_code, ac_name, district, contract, patch,
     row_count, file_size_bytes, has_locality
 ) VALUES (?,?,?,?,?,?,?,?,?)
+"""
+
+CATALOG_LOCALITY_INSERT_SQL = """
+INSERT OR IGNORE INTO catalog_locality (state, ac_code, locality) VALUES (?,?,?)
 """
 
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
@@ -337,6 +355,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002):
         state_total = 0
         acs_with_locality = set()
         ac_index_rows = []
+        locality_rows = []
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
             ac = _resolve_ac(ac_code, ac_lookup)
@@ -352,9 +371,11 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002):
             _finalize_voters_only(ac_conn)
             ac_conn.close()
 
-            has_locality = any(r.locality for r in records)
+            distinct_localities = {r.locality for r in records if r.locality}
+            has_locality = bool(distinct_localities)
             if has_locality:
                 acs_with_locality.add(ac_code)
+                locality_rows.extend((state_id, ac_code, loc) for loc in distinct_localities)
             ac_index_rows.append((
                 state_id, ac_code, ac.ac_name, ac.district, contract, patch,
                 len(records), os.path.getsize(ac_db_path), int(has_locality),
@@ -382,6 +403,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002):
             locality_coverage, built_at,
         ))
         cat_conn.executemany(AC_INDEX_INSERT_SQL, ac_index_rows)
+        cat_conn.executemany(CATALOG_LOCALITY_INSERT_SQL, locality_rows)
         cat_conn.commit()
         cat_conn.close()
         print(f"  wrote catalog {catalog_path}")
