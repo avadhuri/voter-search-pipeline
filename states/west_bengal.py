@@ -17,7 +17,10 @@ The district -> AC -> part tree is scraped once into
 states/meta/west_bengal_ac_meta.json (committed, mirroring Karnataka's
 states/meta/ac_meta.json) rather than re-fetched on every run: it is 316 HTML
 pages for a tree that has not changed since 2002, and committing it keeps a
-build reproducible and lets fetch_raw() work offline-ish.
+build reproducible and lets fetch_raw() work offline-ish. An AC there also
+carries "name_source": "ocr" once its name columns have actually been read
+and spot-checked through the OCR path below; the field being absent means
+nobody has run that AC yet, not that it is unsupported.
 
 Raw bundle shape
 ----------------
@@ -50,10 +53,23 @@ character instead of silently becoming plausible-looking wrong text.
 Which leaves the real limitation, see parse_raw(): only the ~19 Kolkata ACs
 are typeset in English. The other ~275 are typeset in Bengali, and a Bengali
 glyph id cannot be turned into Unicode without a gid->Unicode table for that
-font (which nothing in the PDF provides). Their names are therefore *not*
-extracted -- they are left empty with a remark, never guessed at. The numeric
-and closed-vocabulary columns of those ACs are still recovered; see
-BN_DIGIT_GID / BN_RELATION / BN_GENDER below.
+font (which nothing in the PDF provides). The numeric and closed-vocabulary
+columns of those ACs are still recovered by reverse-engineering the finite
+part of the glyph table; see BN_DIGIT_GID / BN_RELATION / BN_GENDER below.
+
+For the open-vocabulary name columns there is no finite set to match against,
+so they cannot be decoded this way at all. Those are instead read by OCR off
+the rendered glyphs -- see states/west_bengal_ocr.py, which goes around the
+broken mapping rather than trying to complete it. That is opt-in (WB_OCR=1,
+or WestBengalConnector(ocr=True)) because it needs a Tesseract install this
+package does not otherwise require; with OCR off the names stay empty with a
+remark, as before, and are never guessed at.
+
+Note for the search side: OCR yields real Bengali-script names, which is a
+strictly different problem from making them *findable*. Nothing here bridges
+a Latin-script query to Bengali script -- scripts/transliteration.py is
+Devanagari/ITRANS-only -- so these names are extracted and stored but are not
+yet matchable from the existing Latin-query search UI.
 """
 import io
 import json
@@ -64,7 +80,12 @@ from base64 import b64encode
 
 import requests
 
+from states import west_bengal_ocr
 from states.base import Constituency, StateConnector, VoterRecord
+
+
+def _env_flag(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 AC_META_PATH = os.path.join(_HERE, "meta", "west_bengal_ac_meta.json")
@@ -416,8 +437,9 @@ def _parse_cover_locality(page):
 # --------------------------------------------------------------------------
 
 def _page_rows(page, fallback=None):
-    """Return ([cell_text x 8] per logical roll row, column geometry) for one
-    page. Both come back empty if the page carries no roll table.
+    """Return ([(cell_text x 8, cell_boxes x 8)] per logical roll row, column
+    geometry) for one page. Both come back empty if the page carries no roll
+    table. See _segment_rows for what the per-cell boxes are.
 
     A logical row is not always one visual row: a long name wraps onto a
     following line that carries no serial number, and the Bengali layout puts
@@ -457,6 +479,17 @@ def _page_rows(page, fallback=None):
 
 
 def _segment_rows(centres, body):
+    """Yield (cells, boxes) per logical roll row.
+
+    `boxes` parallels `cells`: one list of (x0, top, x1, bottom) rects per
+    column, holding where that cell's glyphs were actually drawn. A wrapped
+    cell gets one rect per visual line rather than their union, because the
+    union of two lines' rects also covers the whitespace and neighbouring
+    columns between them -- useless as an OCR crop. Only the name columns are
+    ever cropped (see WestBengalConnector._parse_part), but every column is
+    tracked because the cost is a tuple per cell and the alternative is a
+    column-specific special case here.
+    """
     # A data row starts with a number at the far left. Spotting them without
     # column boundaries first is what makes the gutters measurable.
     data = [r for r in body if _starts_with_serial(r, centres)]
@@ -468,17 +501,30 @@ def _segment_rows(centres, body):
     out, prev_top = [], None
     for row in body:
         top = min(ch["top"] for ch in row)
-        cells = [_cell_text(c) for c in _split_row(row, bounds)]
+        split = _split_row(row, bounds)
+        cells = [_cell_text(c) for c in split]
+        boxes = [[_bbox_of(c)] if c else [] for c in split]
         if cells[COL_SL].isdigit():
-            out.append(cells)
+            out.append((cells, boxes))
         elif out and not cells[COL_SL] and top - prev_top <= reach:
+            prev_cells, prev_boxes = out[-1]
             for i, extra in enumerate(cells):
                 if extra:
-                    out[-1][i] = (out[-1][i] + " " + extra).strip()
+                    prev_cells[i] = (prev_cells[i] + " " + extra).strip()
+                    prev_boxes[i].extend(boxes[i])
         else:
             continue
         prev_top = top
     yield from out
+
+
+def _bbox_of(chars):
+    return (
+        min(c["x0"] for c in chars),
+        min(c["top"] for c in chars),
+        max(c["x1"] for c in chars),
+        max(c["bottom"] for c in chars),
+    )
 
 
 def _line_height(rows):
@@ -558,8 +604,13 @@ def _normalize(raw, table, field_label, remarks):
 class WestBengalConnector(StateConnector):
     state_id = "west_bengal"
 
-    def __init__(self, session=None):
+    def __init__(self, session=None, ocr=None):
         self.session = session or requests.Session()
+        # Off unless asked for: OCR needs a Tesseract install that the rest of
+        # this package does not, and it is pure cost on the Latin-typeset ACs,
+        # whose names already decode exactly. build_db.py constructs connectors
+        # with no arguments, so the env var is how a build turns it on.
+        self.ocr = _env_flag("WB_OCR") if ocr is None else ocr
 
     def list_constituencies(self) -> list:
         with open(AC_META_PATH, encoding="utf-8") as f:
@@ -623,11 +674,12 @@ class WestBengalConnector(StateConnector):
         ZIP member name, which the downloader took from the site's part index.
 
         For a Bengali-typeset AC the name columns come out as glyph ids with no
-        Unicode mapping. Those rows are still emitted -- with their serial no,
-        house no, age, sex, relationship and EPIC number, all of which *are*
-        recoverable -- but full_name/full_relative_name are left empty and the
-        row carries a remark saying so, so that a later pass with a Bengali
-        glyph table can fill them in from the same archived ZIP.
+        Unicode mapping. Every other column of those rows -- serial no, house
+        no, age, sex, relationship, EPIC number -- *is* recoverable and is
+        emitted. The names themselves come from OCR when it is enabled (see the
+        module docstring), and are otherwise left empty; either way the row
+        carries a remark saying which of the two happened, so a consumer can
+        tell an OCR'd name from an exactly-decoded one.
         """
         records = []
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
@@ -640,34 +692,63 @@ class WestBengalConnector(StateConnector):
         return records
 
     def _parse_part(self, pdf_bytes, ac, roll_year, part_no, member):
-        records, geometry = [], None
-        locality = None
+        rows, locality = [], None
+        geometry = None
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for page in pdf.pages:
+            for page_no, page in enumerate(pdf.pages):
                 if locality is None and page.chars:
                     locality = _parse_cover_locality(page) or None
-                rows, geometry = _page_rows(page, geometry)
-                for cells in rows:
-                    records.append(
-                        self._record(cells, ac, roll_year, part_no, member)
-                    )
+                page_rows, geometry = _page_rows(page, geometry)
+                rows.extend((page_no, cells, boxes) for cells, boxes in page_rows)
+
+        names = self._ocr_names(pdf_bytes, rows) if self.ocr else {}
+        records = [
+            self._record(cells, ac, roll_year, part_no, member, names.get(i))
+            for i, (_, cells, _) in enumerate(rows)
+        ]
         for rec in records:
             rec.locality = locality or ""
         return records
 
-    def _record(self, cells, ac, roll_year, part_no, member):
+    def _ocr_names(self, pdf_bytes, rows):
+        """{row_index: (name, relative_name)} for the rows whose name columns
+        came out as undecoded Bengali glyphs.
+
+        Batched across the whole part in one engine call -- see
+        states/west_bengal_ocr.py on why that matters. Rows whose names already
+        decoded (a Latin-typeset AC) are not sent: OCR would be strictly worse
+        than the exact text the glyph mapping already gives.
+        """
+        wanted, cells_to_ocr = [], []
+        for i, (page_no, cells, boxes) in enumerate(rows):
+            if not (_has_undecoded(cells[COL_NAME]) or _has_undecoded(cells[COL_RELNAME])):
+                continue
+            wanted.append(i)
+            cells_to_ocr.append((page_no, boxes[COL_NAME]))
+            cells_to_ocr.append((page_no, boxes[COL_RELNAME]))
+        if not wanted:
+            return {}
+        out = west_bengal_ocr.ocr_cells(pdf_bytes, cells_to_ocr)
+        return {i: (out[2 * n], out[2 * n + 1]) for n, i in enumerate(wanted)}
+
+    def _record(self, cells, ac, roll_year, part_no, member, ocr_names=None):
         remarks = []
         name = cells[COL_NAME]
         rel_name = cells[COL_RELNAME]
 
         if _has_undecoded(name) or _has_undecoded(rel_name):
             # Bengali-typeset AC: the glyphs are there but nothing in the PDF
-            # says what they mean. Refuse rather than transliterate a guess.
+            # says what they mean, so the text layer is a dead end. Either OCR
+            # read the names off the rendered glyphs, or we refuse rather than
+            # transliterate a guess.
+            name, rel_name = (ocr_names or ("", ""))
             remarks.append(
+                "name in Bengali script, read by OCR from the rendered glyphs: "
+                "source font carries no ToUnicode map. Best-effort accuracy"
+                if name or rel_name else
                 "name in Bengali script: source font carries no ToUnicode map, "
                 "so the name columns are not decodable yet"
             )
-            name = rel_name = ""
 
         relation = _normalize(
             _bn_lookup(cells[COL_REL], BN_RELATION, "relation_code", remarks),

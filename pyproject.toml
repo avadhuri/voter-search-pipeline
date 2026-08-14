@@ -21,6 +21,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ocr = [
+    "pymupdf==1.28.2",
+]
 eval = [
     "scikit-learn==1.6.1",
     "sentence-transformers==5.1.2",

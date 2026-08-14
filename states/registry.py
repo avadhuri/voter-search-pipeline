@@ -24,10 +24,13 @@ STATE_CONNECTORS = {
         "label": "West Bengal",
         "raw_dir": "data/raw/west_bengal",
         "raw_glob": "*.zip",
-        # The loaded ACs are the Latin-typeset Kolkata subset (see this
-        # module's docstring in west_bengal.py) -- the ~275 Bengali-typeset
-        # ACs aren't fetchable at all, so nothing Bengali-scripted ever
-        # reaches the DB today. "latin" reflects what's actually loaded.
+        # Mixed in principle: the Kolkata ACs are Latin-typeset, the rest are
+        # Bengali-typeset and only yield names under WB_OCR=1 (see
+        # west_bengal.py's docstring). "script" is read only to pick the
+        # Devanagari->Latin transliteration bridge and there is no Bengali
+        # equivalent, so "latin" stays right either way -- with the caveat
+        # that an OCR'd name is stored in Bengali script, which a
+        # Latin-script query therefore cannot match.
         "script": "latin",
     },
     "haryana": {
