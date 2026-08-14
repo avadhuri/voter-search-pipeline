@@ -159,7 +159,8 @@
   "district": "Panipat",
   "total_parts": 166,
   "listed_parts": 166,
-  "roll_format": "scanned"
+  "roll_format": "scanned",
+  "ocr_validated": true
  },
  {
   "ac_id": 19,
@@ -339,7 +340,8 @@
   "district": "Sonipat",
   "total_parts": 153,
   "listed_parts": 153,
-  "roll_format": "scanned"
+  "roll_format": "scanned",
+  "ocr_validated": true
  },
  {
   "ac_id": 39,
@@ -528,7 +530,8 @@
   "district": "Gurgaon",
   "total_parts": 184,
   "listed_parts": 184,
-  "roll_format": "scanned"
+  "roll_format": "scanned",
+  "ocr_validated": true
  },
  {
   "ac_id": 60,
