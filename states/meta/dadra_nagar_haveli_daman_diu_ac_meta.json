@@ -1,0 +1,848 @@
+[
+ {
+  "ac_no": 1,
+  "ac_name": "DAMAN & DIU",
+  "district_name": "DAMAN",
+  "district_no": 1,
+  "total_parts": 82,
+  "parts": [
+   {
+    "part_no": 1,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E1.pdf"
+   },
+   {
+    "part_no": 2,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E2.pdf"
+   },
+   {
+    "part_no": 3,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E3.pdf"
+   },
+   {
+    "part_no": 4,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E4.pdf"
+   },
+   {
+    "part_no": 5,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E5.pdf"
+   },
+   {
+    "part_no": 6,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E6.pdf"
+   },
+   {
+    "part_no": 7,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E7.pdf"
+   },
+   {
+    "part_no": 8,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E8.pdf"
+   },
+   {
+    "part_no": 9,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E9.pdf"
+   },
+   {
+    "part_no": 10,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E10.pdf"
+   },
+   {
+    "part_no": 11,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E11.pdf"
+   },
+   {
+    "part_no": 12,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E12.pdf"
+   },
+   {
+    "part_no": 13,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E13.pdf"
+   },
+   {
+    "part_no": 14,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E14.pdf"
+   },
+   {
+    "part_no": 15,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E15.pdf"
+   },
+   {
+    "part_no": 16,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E16.pdf"
+   },
+   {
+    "part_no": 17,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E17.pdf"
+   },
+   {
+    "part_no": 18,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E18.pdf"
+   },
+   {
+    "part_no": 19,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E19.pdf"
+   },
+   {
+    "part_no": 20,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E20.pdf"
+   },
+   {
+    "part_no": 21,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E21.pdf"
+   },
+   {
+    "part_no": 22,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E22.pdf"
+   },
+   {
+    "part_no": 23,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E23.pdf"
+   },
+   {
+    "part_no": 24,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E24.pdf"
+   },
+   {
+    "part_no": 25,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E25.pdf"
+   },
+   {
+    "part_no": 26,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E26.pdf"
+   },
+   {
+    "part_no": 27,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E27.pdf"
+   },
+   {
+    "part_no": 28,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E28.pdf"
+   },
+   {
+    "part_no": 29,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E29.pdf"
+   },
+   {
+    "part_no": 30,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E30.pdf"
+   },
+   {
+    "part_no": 31,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E31.pdf"
+   },
+   {
+    "part_no": 32,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E32.pdf"
+   },
+   {
+    "part_no": 33,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E33.pdf"
+   },
+   {
+    "part_no": 34,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E34.pdf"
+   },
+   {
+    "part_no": 35,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E35.pdf"
+   },
+   {
+    "part_no": 36,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E36.pdf"
+   },
+   {
+    "part_no": 37,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E37.pdf"
+   },
+   {
+    "part_no": 38,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E38.pdf"
+   },
+   {
+    "part_no": 39,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E39.pdf"
+   },
+   {
+    "part_no": 40,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E40.pdf"
+   },
+   {
+    "part_no": 41,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E41.pdf"
+   },
+   {
+    "part_no": 42,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E42.pdf"
+   },
+   {
+    "part_no": 43,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E43.pdf"
+   },
+   {
+    "part_no": 44,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E44.pdf"
+   },
+   {
+    "part_no": 45,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E45.pdf"
+   },
+   {
+    "part_no": 46,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E46.pdf"
+   },
+   {
+    "part_no": 47,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E47.pdf"
+   },
+   {
+    "part_no": 48,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E48.pdf"
+   },
+   {
+    "part_no": 49,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E49.pdf"
+   },
+   {
+    "part_no": 50,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E50.pdf"
+   },
+   {
+    "part_no": 51,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E51.pdf"
+   },
+   {
+    "part_no": 52,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E52.pdf"
+   },
+   {
+    "part_no": 53,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E53.pdf"
+   },
+   {
+    "part_no": 54,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E54.pdf"
+   },
+   {
+    "part_no": 55,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E55.pdf"
+   },
+   {
+    "part_no": 56,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E56.pdf"
+   },
+   {
+    "part_no": 57,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E57.pdf"
+   },
+   {
+    "part_no": 58,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E58.pdf"
+   },
+   {
+    "part_no": 59,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E59.pdf"
+   },
+   {
+    "part_no": 60,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E60.pdf"
+   },
+   {
+    "part_no": 61,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E61.pdf"
+   },
+   {
+    "part_no": 62,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E62.pdf"
+   },
+   {
+    "part_no": 63,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E63.pdf"
+   },
+   {
+    "part_no": 64,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E64.pdf"
+   },
+   {
+    "part_no": 65,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E65.pdf"
+   },
+   {
+    "part_no": 66,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E66.pdf"
+   },
+   {
+    "part_no": 67,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E67.pdf"
+   },
+   {
+    "part_no": 68,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E68.pdf"
+   },
+   {
+    "part_no": 69,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E69.pdf"
+   },
+   {
+    "part_no": 70,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E70.pdf"
+   },
+   {
+    "part_no": 71,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E71.pdf"
+   },
+   {
+    "part_no": 72,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E72.pdf"
+   },
+   {
+    "part_no": 73,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E73.pdf"
+   },
+   {
+    "part_no": 74,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E74.pdf"
+   },
+   {
+    "part_no": 75,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E75.pdf"
+   },
+   {
+    "part_no": 76,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E76.pdf"
+   },
+   {
+    "part_no": 77,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E77.pdf"
+   },
+   {
+    "part_no": 78,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E78.pdf"
+   },
+   {
+    "part_no": 79,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E79.pdf"
+   },
+   {
+    "part_no": 80,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E80.pdf"
+   },
+   {
+    "part_no": 81,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E81.pdf"
+   },
+   {
+    "part_no": 82,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DMN/E82.pdf"
+   }
+  ]
+ },
+ {
+  "ac_no": 2,
+  "ac_name": "Dadra & Nagar Haveli",
+  "district_name": "Dadra & Nagar Haveli",
+  "district_no": 3,
+  "total_parts": 125,
+  "parts": [
+   {
+    "part_no": 1,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS01-2002.pdf"
+   },
+   {
+    "part_no": 2,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS02-2002.pdf"
+   },
+   {
+    "part_no": 3,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS03-2002.pdf"
+   },
+   {
+    "part_no": 4,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS04-2002.pdf"
+   },
+   {
+    "part_no": 5,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS05-2002.pdf"
+   },
+   {
+    "part_no": 6,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS06-2002.pdf"
+   },
+   {
+    "part_no": 7,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS07-2002.pdf"
+   },
+   {
+    "part_no": 8,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS08-2002.pdf"
+   },
+   {
+    "part_no": 9,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS09-2002.pdf"
+   },
+   {
+    "part_no": 10,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS10-2002.pdf"
+   },
+   {
+    "part_no": 11,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS11-2002.pdf"
+   },
+   {
+    "part_no": 12,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS12-2002.pdf"
+   },
+   {
+    "part_no": 13,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS13-2002.pdf"
+   },
+   {
+    "part_no": 14,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS14-2002.pdf"
+   },
+   {
+    "part_no": 15,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS15-2002.pdf"
+   },
+   {
+    "part_no": 16,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS16-2002.pdf"
+   },
+   {
+    "part_no": 17,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS17-2002.pdf"
+   },
+   {
+    "part_no": 18,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS18-2002.pdf"
+   },
+   {
+    "part_no": 19,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS19-2002.pdf"
+   },
+   {
+    "part_no": 20,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS20-2002.pdf"
+   },
+   {
+    "part_no": 21,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS21-2002.pdf"
+   },
+   {
+    "part_no": 22,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS22-2002.pdf"
+   },
+   {
+    "part_no": 23,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS23-2002.pdf"
+   },
+   {
+    "part_no": 24,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS24-2002.pdf"
+   },
+   {
+    "part_no": 25,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS25-2002.pdf"
+   },
+   {
+    "part_no": 26,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS26-2002.pdf"
+   },
+   {
+    "part_no": 27,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS27-2002.pdf"
+   },
+   {
+    "part_no": 28,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS28-2002.pdf"
+   },
+   {
+    "part_no": 29,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS29-2002.pdf"
+   },
+   {
+    "part_no": 30,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS30-2002.pdf"
+   },
+   {
+    "part_no": 31,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS31-2002.pdf"
+   },
+   {
+    "part_no": 32,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS32-2002.pdf"
+   },
+   {
+    "part_no": 33,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS33-2002.pdf"
+   },
+   {
+    "part_no": 34,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS34-2002.pdf"
+   },
+   {
+    "part_no": 35,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS35-2002.pdf"
+   },
+   {
+    "part_no": 36,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS36-2002.pdf"
+   },
+   {
+    "part_no": 37,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS37-2002.pdf"
+   },
+   {
+    "part_no": 38,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS38-2002.pdf"
+   },
+   {
+    "part_no": 39,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS39-2002.pdf"
+   },
+   {
+    "part_no": 40,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS40-2002.pdf"
+   },
+   {
+    "part_no": 41,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS41-2002.pdf"
+   },
+   {
+    "part_no": 42,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS42-2002.pdf"
+   },
+   {
+    "part_no": 43,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS43-2002.pdf"
+   },
+   {
+    "part_no": 44,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS44-2002.pdf"
+   },
+   {
+    "part_no": 45,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS45-2002.pdf"
+   },
+   {
+    "part_no": 46,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS46-2002.pdf"
+   },
+   {
+    "part_no": 47,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS47-2002.pdf"
+   },
+   {
+    "part_no": 48,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS48-2002.pdf"
+   },
+   {
+    "part_no": 49,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS49-2002.pdf"
+   },
+   {
+    "part_no": 50,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS50-2002.pdf"
+   },
+   {
+    "part_no": 51,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS51-2002.pdf"
+   },
+   {
+    "part_no": 52,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS52-2002.pdf"
+   },
+   {
+    "part_no": 53,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS53-2002.pdf"
+   },
+   {
+    "part_no": 54,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS54-2002.pdf"
+   },
+   {
+    "part_no": 55,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS55-2002.pdf"
+   },
+   {
+    "part_no": 56,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS56-2002.pdf"
+   },
+   {
+    "part_no": 57,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS57-2002.pdf"
+   },
+   {
+    "part_no": 58,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS58-2002.pdf"
+   },
+   {
+    "part_no": 59,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS59-2002.pdf"
+   },
+   {
+    "part_no": 60,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS60-2002.pdf"
+   },
+   {
+    "part_no": 61,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS61-2002.pdf"
+   },
+   {
+    "part_no": 62,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS62-2002.pdf"
+   },
+   {
+    "part_no": 63,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS63-2002.pdf"
+   },
+   {
+    "part_no": 64,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS64-2002.pdf"
+   },
+   {
+    "part_no": 65,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS65-2002.pdf"
+   },
+   {
+    "part_no": 66,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS66-2002.pdf"
+   },
+   {
+    "part_no": 67,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS67-2002.pdf"
+   },
+   {
+    "part_no": 68,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS68-2002.pdf"
+   },
+   {
+    "part_no": 69,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS69-2002.pdf"
+   },
+   {
+    "part_no": 70,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS70-2002.pdf"
+   },
+   {
+    "part_no": 71,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS71-2002.pdf"
+   },
+   {
+    "part_no": 72,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS72-2002.pdf"
+   },
+   {
+    "part_no": 73,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS73-2002.pdf"
+   },
+   {
+    "part_no": 74,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS74-2002.pdf"
+   },
+   {
+    "part_no": 75,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS75-2002.pdf"
+   },
+   {
+    "part_no": 76,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS76-2002.pdf"
+   },
+   {
+    "part_no": 77,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS77-2002.pdf"
+   },
+   {
+    "part_no": 78,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS78-2002.pdf"
+   },
+   {
+    "part_no": 79,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS79-2002.pdf"
+   },
+   {
+    "part_no": 80,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS80-2002.pdf"
+   },
+   {
+    "part_no": 81,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS81-2002.pdf"
+   },
+   {
+    "part_no": 82,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS82-2002.pdf"
+   },
+   {
+    "part_no": 83,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS83-2002.pdf"
+   },
+   {
+    "part_no": 84,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS84-2002.pdf"
+   },
+   {
+    "part_no": 85,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS85-2002.pdf"
+   },
+   {
+    "part_no": 86,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS86-2002.pdf"
+   },
+   {
+    "part_no": 87,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS87-2002.pdf"
+   },
+   {
+    "part_no": 88,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS88-2002.pdf"
+   },
+   {
+    "part_no": 89,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS89-2002.pdf"
+   },
+   {
+    "part_no": 90,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS90-2002.pdf"
+   },
+   {
+    "part_no": 91,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS91-2002.pdf"
+   },
+   {
+    "part_no": 92,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS92-2002.pdf"
+   },
+   {
+    "part_no": 93,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS93-2002.pdf"
+   },
+   {
+    "part_no": 94,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS94-2002.pdf"
+   },
+   {
+    "part_no": 95,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS95-2002.pdf"
+   },
+   {
+    "part_no": 96,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS96-2002.pdf"
+   },
+   {
+    "part_no": 97,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS97-2002.pdf"
+   },
+   {
+    "part_no": 98,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS98-2002.pdf"
+   },
+   {
+    "part_no": 99,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS99-2002.pdf"
+   },
+   {
+    "part_no": 100,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS100-2002.pdf"
+   },
+   {
+    "part_no": 101,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS101-2002.pdf"
+   },
+   {
+    "part_no": 102,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS102-2002.pdf"
+   },
+   {
+    "part_no": 103,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS103-2002.pdf"
+   },
+   {
+    "part_no": 104,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS104-2002.pdf"
+   },
+   {
+    "part_no": 105,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS105-2002.pdf"
+   },
+   {
+    "part_no": 106,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS106-2002.pdf"
+   },
+   {
+    "part_no": 107,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS107-2002.pdf"
+   },
+   {
+    "part_no": 108,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS108-2002.pdf"
+   },
+   {
+    "part_no": 109,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS109-2002.pdf"
+   },
+   {
+    "part_no": 110,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS110-2002.pdf"
+   },
+   {
+    "part_no": 111,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS111-2002.pdf"
+   },
+   {
+    "part_no": 112,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS112-2002.pdf"
+   },
+   {
+    "part_no": 113,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS113-2002.pdf"
+   },
+   {
+    "part_no": 114,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS114-2002.pdf"
+   },
+   {
+    "part_no": 115,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS115-2002.pdf"
+   },
+   {
+    "part_no": 116,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS116-2002.pdf"
+   },
+   {
+    "part_no": 117,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS117-2002.pdf"
+   },
+   {
+    "part_no": 118,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS118-2002.pdf"
+   },
+   {
+    "part_no": 119,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS119-2002.pdf"
+   },
+   {
+    "part_no": 120,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS120-2002.pdf"
+   },
+   {
+    "part_no": 121,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS121-2002.pdf"
+   },
+   {
+    "part_no": 122,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS122-2002.pdf"
+   },
+   {
+    "part_no": 123,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS123-2002.pdf"
+   },
+   {
+    "part_no": 124,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS124-2002.pdf"
+   },
+   {
+    "part_no": 125,
+    "pdf_url": "https://ceodaman.nic.in/IRER2002/DNH/Gujarati/PS125-2002.pdf"
+   }
+  ]
+ }
+]
