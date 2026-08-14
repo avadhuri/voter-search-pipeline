@@ -61,9 +61,10 @@ For the open-vocabulary name columns there is no finite set to match against,
 so they cannot be decoded this way at all. Those are instead read by OCR off
 the rendered glyphs -- see states/west_bengal_ocr.py, which goes around the
 broken mapping rather than trying to complete it. That is opt-in (WB_OCR=1,
-or WestBengalConnector(ocr=True)) because it needs a Tesseract install this
-package does not otherwise require; with OCR off the names stay empty with a
-remark, as before, and are never guessed at.
+or WestBengalConnector(ocr=True)) because it needs an OCR engine this package
+does not otherwise require, and its default engine (Google Cloud Vision) bills
+per page; with OCR off the names stay empty with a remark, as before, and are
+never guessed at.
 
 Note for the search side: OCR yields real Bengali-script names, which is a
 strictly different problem from making them *findable*. Nothing here bridges
@@ -77,6 +78,7 @@ import os
 import re
 import zipfile
 from base64 import b64encode
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -589,6 +591,11 @@ def _describe(s):
     return "".join("?" if _is_undecoded(c) else c for c in s)
 
 
+def _part_no_of(member):
+    m = re.search(r"(\d+)", os.path.basename(member))
+    return int(m.group(1)) if m else None
+
+
 def _normalize(raw, table, field_label, remarks):
     """Map a cell through a confident-only table; anything unrecognized keeps
     its raw value and earns a remark instead of being guessed at."""
@@ -681,14 +688,51 @@ class WestBengalConnector(StateConnector):
         carries a remark saying which of the two happened, so a consumer can
         tell an OCR'd name from an exactly-decoded one.
         """
-        records = []
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-            for member in sorted(zf.namelist()):
-                m = re.search(r"(\d+)", os.path.basename(member))
-                part_no = int(m.group(1)) if m else None
-                records.extend(
-                    self._parse_part(zf.read(member), ac, roll_year, part_no, member)
-                )
+            jobs = [(name, _part_no_of(name)) for name in sorted(zf.namelist())]
+            if not self.ocr or len(jobs) < 2:
+                return [
+                    rec
+                    for name, part_no in jobs
+                    for rec in self._parse_part(
+                        zf.read(name), ac, roll_year, part_no, name
+                    )
+                ]
+            return self._parse_parts_concurrently(zf, jobs, ac, roll_year)
+
+    def _parse_parts_concurrently(self, zf, jobs, ac, roll_year):
+        """Parse parts `workers` at a time, keeping the output in part order.
+
+        Parts are independent and, with OCR on, dominated by waiting on an OCR
+        engine -- a Cloud Vision round trip, or a tesseract subprocess -- so
+        threads suffice and no PDF has to cross a process boundary. Measured on
+        6 parts of AC001 via Vision: 110.9s at workers=1, 45.1s at 6 (2.5x),
+        identical output. The gap from a clean 6x is accounted for: of the
+        110.9s, ~7s is pdfplumber and ~7s is PNG encoding, both GIL-bound,
+        against ~95s of network wait that does parallelize.
+
+        Deliberately threads and not a process pool: build_db.build_per_ac
+        already fans ACs out across a ProcessPoolExecutor, so this is the inner
+        layer of an outer process pool, and nesting pools would multiply into
+        dozens of processes rather than the intended concurrency.
+
+        A wave at a time rather than submitting every part at once: ZipFile.read
+        is not safe to call from several threads concurrently, so bytes are read
+        here on one thread, and holding only `workers` parts at a time keeps
+        peak memory flat instead of scaling with a 450-part AC.
+        """
+        size = min(west_bengal_ocr.workers(), len(jobs))
+        records = []
+        with ThreadPoolExecutor(max_workers=size) as pool:
+            for start in range(0, len(jobs), size):
+                wave = [
+                    pool.submit(
+                        self._parse_part, zf.read(name), ac, roll_year, part_no, name
+                    )
+                    for name, part_no in jobs[start:start + size]
+                ]
+                for future in wave:
+                    records.extend(future.result())
         return records
 
     def _parse_part(self, pdf_bytes, ac, roll_year, part_no, member):
