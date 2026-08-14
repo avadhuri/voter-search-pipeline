@@ -22,6 +22,8 @@ Flask app/UI/deployment that serves it stay in a separate, closed repo.
   Devanagari-script state's data (see its module docstring for the
   rule-based-vs-ML tradeoff).
 - `scripts/search.py` — a CLI for querying a built DB directly.
+- `scripts/ocr_haryana.py` — the OCR preprocessing pass for Haryana's 46
+  scanned ACs (see "OCR for scanned rolls" below).
 - `scripts/cross_reference.py`, `scripts/migrate_translit.py`,
   `scripts/audit_raw_csv.py`, `scripts/eval_embeddings.py`,
   `scripts/download_*.py` — supporting tooling for building, auditing, and
@@ -34,6 +36,40 @@ pip install -e .
 # or, for the embedding-eval tooling:
 pip install -e .[eval]
 ```
+
+## OCR for scanned rolls
+
+44 of Haryana's 90 ACs publish a real (if legacy-font-encoded) text layer and
+parse directly. The other 46 are page scans, and go through a separate OCR
+pass first — separate because it is minutes per part and hours per AC, far
+too slow to run implicitly inside `build_db`:
+
+```
+make download-haryana AC=HR18       # the scans
+make ocr-haryana AC=HR18 PARTS=2    # PARTS= caps it, for a quick sample
+make build-db STATES=haryana
+```
+
+`ocr-haryana` writes one `partNNNN.ocr.json` artifact next to each part PDF
+*inside that AC's existing raw ZIP*, and skips parts already done, so it is
+re-runnable and interrupt-safe. `states/haryana.py` reads those artifacts;
+without them a scanned AC still raises `UnparseableRollError` rather than
+looking like an empty roll.
+
+This needs two things `pip install` can't provide, because the OCR engine is
+a binary, not a Python package:
+
+```
+brew install tesseract            # or: apt-get install tesseract-ocr
+curl -fLo "$(brew --prefix)/share/tessdata/hin.traineddata" \
+  https://github.com/tesseract-ocr/tessdata_best/raw/main/hin.traineddata
+```
+
+Output is best-effort and every OCR'd row is marked as such in its `remark`
+column. On the sampled parts, 94-99% of rows carry a name and 99-100% a
+documented relation code. See `states/haryana_ocr.py` for how columns are
+recovered from a rasterized page, and why Tesseract's `hin` model was chosen
+over the Indic-OCR project's.
 
 ## Deploying built data to the dev bucket
 

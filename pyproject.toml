@@ -16,6 +16,12 @@ dependencies = [
     "rapidfuzz==3.13.0",
     "indic-transliteration==2.3.82",
     "pdfplumber==0.11.8",
+    # Rasterises Haryana's scanned ACs for the OCR pass (states/haryana_ocr.py).
+    # Preferred over pdf2image, which shells out to poppler-utils, an OS
+    # package: pymupdf ships a self-contained wheel, so it installs cleanly in
+    # this project's Docker/CI images. The OCR engine itself is the `tesseract`
+    # CLI rather than a Python binding, so it adds no dependency here.
+    "pymupdf==1.28.2",
     "playwright==1.60.0",
     "requests==2.32.5",
 ]
@@ -41,6 +47,7 @@ py-modules = [
     "download_haryana",
     "download_west_bengal",
     "download_2025_pilot",
+    "ocr_haryana",
 ]
 packages = ["states"]
 

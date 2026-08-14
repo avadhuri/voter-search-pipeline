@@ -48,10 +48,13 @@ Probing part 1 of all 90 ACs shows the collection is NOT uniform:
     unusable character-soup, 1 uses "HiddenHorzOCR", 3 (ACs 18, 38, 59) have
     no text layer at all, and AC 72 uses an unidentified "Untitled" font.
 
-roll_format in haryana_ac_meta.json records which is which. parse_raw()
-refuses to guess at a scanned AC: it raises UnparseableRollError rather than
-returning an empty list that would look like a successful parse of an empty
-roll. Those 46 ACs need an OCR pipeline, which is out of scope here.
+roll_format in haryana_ac_meta.json records which is which. A scanned AC is
+served by the OCR preprocessing pass in states/haryana_ocr.py, run separately
+via scripts/ocr_haryana.py because it is hours of CPU per AC; parse_raw()
+reads the artifacts that pass leaves in the AC's raw ZIP. It still refuses to
+guess at a scanned AC that has not been through that pass, raising
+UnparseableRollError rather than returning an empty list that would look like
+a successful parse of an empty roll.
 
 TABLE LAYOUT
 ------------
@@ -89,6 +92,7 @@ import zipfile
 import pdfplumber
 import requests
 
+from states import haryana_ocr
 from states.base import Constituency, StateConnector, VoterRecord
 from states.haryana_dkraj import decode as dkraj_decode
 
@@ -108,6 +112,14 @@ SCANNED_ACS = frozenset({
     29, 30, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 49, 50, 59, 72, 73,
     76, 77, 78, 80, 81, 82, 83, 84,
 })
+
+# Scanned ACs whose OCR path has actually been run and checked end to end, as
+# opposed to merely being eligible for it. Recorded per-AC because the OCR
+# pass is hours of CPU per AC and has so far been run on a sample -- this set
+# is the honest answer to "which scans has anyone actually looked at?", not a
+# claim about the other 43. Sampled parts of these three parse at 94-99% of
+# rows carrying a name and 99-100% carrying a documented relation code.
+OCR_VALIDATED_ACS = frozenset({18, 38, 59})
 
 # The relation and gender codes are not guessed at -- they are documented by
 # the rolls themselves, in a legend printed in the footer of every data page:
@@ -368,7 +380,11 @@ class HaryanaConnector(StateConnector):
                 ac_name=row["ac_name"],
                 district=row["district"],
                 total_parts=row.get("total_parts", 0),
-                extra={"ac_id": row["ac_id"], "roll_format": row["roll_format"]},
+                extra={
+                    "ac_id": row["ac_id"],
+                    "roll_format": row["roll_format"],
+                    "ocr_validated": row.get("ocr_validated", False),
+                },
             )
             for row in raw
         ]
@@ -415,6 +431,8 @@ class HaryanaConnector(StateConnector):
                     "listed_parts": len(listed),
                     "roll_format": "scanned" if ac_id in SCANNED_ACS else "text",
                 })
+                if ac_id in OCR_VALIDATED_ACS:
+                    meta[-1]["ocr_validated"] = True
         meta.sort(key=lambda r: r["ac_id"])
         with open(path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=1)
@@ -461,11 +479,7 @@ class HaryanaConnector(StateConnector):
 
     def parse_raw(self, raw: bytes, ac: Constituency, roll_year: int) -> list:
         if ac.extra.get("roll_format") == "scanned":
-            raise UnparseableRollError(
-                f"{ac.ac_code} ({ac.ac_name}) is published as page scans with no "
-                "usable text layer; it needs an OCR pipeline, which this "
-                "connector does not implement. See states/haryana.py."
-            )
+            return self._parse_scanned(raw, ac, roll_year)
         records = []
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             for name in sorted(zf.namelist()):
@@ -476,6 +490,65 @@ class HaryanaConnector(StateConnector):
                     self._parse_part(zf.read(name), m.group(1), ac, roll_year)
                 )
         return records
+
+    # -- scanned ACs, via the OCR preprocessing pass ------------------------
+
+    def _parse_scanned(self, raw, ac, roll_year):
+        """Build records for a scanned AC from the artifacts scripts/ocr_haryana.py
+        wrote into its raw ZIP. Still refuses to guess when that pass has not
+        been run: an un-OCRed scan has no text to parse, and returning [] would
+        look exactly like a successful parse of an empty roll."""
+        artifacts = haryana_ocr.read_artifacts(raw)
+        if not artifacts:
+            raise UnparseableRollError(
+                f"{ac.ac_code} ({ac.ac_name}) is published as page scans with no "
+                "usable text layer, and has not been through the OCR pass yet. "
+                f"Run `make ocr-haryana AC={ac.ac_code}` first. "
+                "See states/haryana_ocr.py."
+            )
+        records = []
+        for part_id, artifact in sorted(artifacts.items()):
+            records.extend(self._parse_ocr_part(artifact, part_id, ac, roll_year))
+        return records
+
+    def _parse_ocr_part(self, artifact, part_id, ac, roll_year):
+        digits = re.match(r"0*(\d+)", part_id)
+        part_no = int(digits.group(1)) if digits else None
+        records = []
+        for page in artifact["pages"]:
+            for row in haryana_ocr.rows_from_page(page["words"]):
+                records.append(self._ocr_record(row, part_no, ac, roll_year))
+        return records
+
+    def _ocr_record(self, row, part_no, ac, roll_year):
+        # Every scanned row carries this remark: OCR output is best-effort and
+        # unreviewed, and a search hit on one should be read as such rather
+        # than being indistinguishable from a decoded text-layer row.
+        remarks = ["OCR'd from a page scan; text is best-effort"]
+        if not row["full_name"]:
+            remarks.append("no voter name in row")
+        return VoterRecord(
+            state=self.state_id,
+            district=ac.district,
+            ac_code=ac.ac_code,
+            ac_name=ac.ac_name,
+            part_no=part_no,
+            serial_no=_parse_int(row["serial_no"], "serial_no", remarks),
+            local_ref=row["local_ref"],
+            full_name=row["full_name"],
+            full_relative_name=row["full_relative_name"],
+            relation_code=_normalize(
+                row["relation_code"], RELATION_NORMALIZE, "relation_code", remarks
+            ),
+            age=_parse_int(row["age"], "age", remarks),
+            gender=_normalize(row["gender"], GENDER_NORMALIZE, "gender", remarks),
+            roll_year=roll_year,
+            # locality is left blank rather than guessed: a scanned cover page
+            # OCRs too unreliably to match COVER_FIELD_LABELS, the same call
+            # _parse_cover_locality() already makes for the hybrid ACs.
+            locality="",
+            remark="; ".join(remarks),
+        )
 
     def _parse_part(self, pdf_bytes, part_id, ac, roll_year):
         # VoterRecord.part_no is an int, but a handful of part ids carry a

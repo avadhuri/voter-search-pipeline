@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac push-ac-db-dev migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-haryana build-db build-db-ac push-ac-db-dev migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -93,6 +93,15 @@ ifdef AC
 else
 	$(PY) -m download_haryana --ac $(HR_DEMO_ACS) --out-dir $(HR_RAW_DIR)
 endif
+
+# The OCR stage for Haryana's 46 scanned ACs, sitting between
+# download-haryana and build-db -- see states/haryana_ocr.py for why it is a
+# separate pass rather than something build-db runs implicitly. Needs the
+# `tesseract` binary and its `hin` traineddata installed (see the README).
+# PARTS=n caps how many parts per AC get OCR'd, which is what makes a quick
+# sample run possible against an AC that would otherwise take hours.
+ocr-haryana: ## OCR Haryana's scanned ACs in place (AC=HR18[,HR38] required; PARTS=n)
+	$(PY) -m ocr_haryana --ac $(AC) --raw-dir $(HR_RAW_DIR) $(if $(PARTS),--parts $(PARTS),)
 
 # `make build-db AC=A085` builds a single-AC DB (data/db/A085.sqlite).
 # `make build-db STATES=karnataka,west_bengal,haryana` combines every listed
