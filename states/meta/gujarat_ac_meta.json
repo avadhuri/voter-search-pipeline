@@ -1,0 +1,1276 @@
+[
+ {
+  "ac_no": 1,
+  "ac_name": "ABDASA",
+  "district_name": "KUTCH",
+  "district_no": 1,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P001.zip"
+ },
+ {
+  "ac_no": 2,
+  "ac_name": "MANDVI",
+  "district_name": "KUTCH",
+  "district_no": 1,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P002.zip"
+ },
+ {
+  "ac_no": 3,
+  "ac_name": "BHUJ",
+  "district_name": "KUTCH",
+  "district_no": 1,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P003.zip"
+ },
+ {
+  "ac_no": 4,
+  "ac_name": "MUNDRA (SC)",
+  "district_name": "KUTCH",
+  "district_no": 1,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P004.zip"
+ },
+ {
+  "ac_no": 5,
+  "ac_name": "ANJAR",
+  "district_name": "KUTCH",
+  "district_no": 1,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P005.zip"
+ },
+ {
+  "ac_no": 6,
+  "ac_name": "RAPAR",
+  "district_name": "KUTCH",
+  "district_no": 1,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P006.zip"
+ },
+ {
+  "ac_no": 7,
+  "ac_name": "DASADA (SC)",
+  "district_name": "SURENDRANAGAR",
+  "district_no": 2,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P007.zip"
+ },
+ {
+  "ac_no": 8,
+  "ac_name": "WADHVAN",
+  "district_name": "SURENDRANAGAR",
+  "district_no": 2,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P008.zip"
+ },
+ {
+  "ac_no": 9,
+  "ac_name": "LIMBDI",
+  "district_name": "SURENDRANAGAR",
+  "district_no": 2,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P009.zip"
+ },
+ {
+  "ac_no": 10,
+  "ac_name": "CHOTILA",
+  "district_name": "SURENDRANAGAR",
+  "district_no": 2,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P010.zip"
+ },
+ {
+  "ac_no": 11,
+  "ac_name": "HALVAD",
+  "district_name": "SURENDRANAGAR",
+  "district_no": 2,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P011.zip"
+ },
+ {
+  "ac_no": 12,
+  "ac_name": "DHRANGADHRA",
+  "district_name": "SURENDRANAGAR",
+  "district_no": 2,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P012.zip"
+ },
+ {
+  "ac_no": 13,
+  "ac_name": "MORBI",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P013.zip"
+ },
+ {
+  "ac_no": 14,
+  "ac_name": "TANKARA",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P014.zip"
+ },
+ {
+  "ac_no": 15,
+  "ac_name": "WANKANER",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P015.zip"
+ },
+ {
+  "ac_no": 16,
+  "ac_name": "JASDAN",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P016.zip"
+ },
+ {
+  "ac_no": 17,
+  "ac_name": "RAJKOT-I",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P017.zip"
+ },
+ {
+  "ac_no": 18,
+  "ac_name": "RAJKOT-II",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P018.zip"
+ },
+ {
+  "ac_no": 19,
+  "ac_name": "RAJKOT RURAL (SC)",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P019.zip"
+ },
+ {
+  "ac_no": 20,
+  "ac_name": "GONDAL",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P020.zip"
+ },
+ {
+  "ac_no": 21,
+  "ac_name": "JETPUR",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P021.zip"
+ },
+ {
+  "ac_no": 22,
+  "ac_name": "DHORAJI",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P022.zip"
+ },
+ {
+  "ac_no": 23,
+  "ac_name": "UPLETA",
+  "district_name": "RAJKOT",
+  "district_no": 3,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P023.zip"
+ },
+ {
+  "ac_no": 24,
+  "ac_name": "JODIYA",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P024.zip"
+ },
+ {
+  "ac_no": 25,
+  "ac_name": "JAMNAGAR",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P025.zip"
+ },
+ {
+  "ac_no": 26,
+  "ac_name": "JAMNAGAR RURAL (SC)",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P026.zip"
+ },
+ {
+  "ac_no": 27,
+  "ac_name": "KALAWAD",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P027.zip"
+ },
+ {
+  "ac_no": 28,
+  "ac_name": "JAMJODHPUR",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P028.zip"
+ },
+ {
+  "ac_no": 29,
+  "ac_name": "BHANVAD",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P029.zip"
+ },
+ {
+  "ac_no": 30,
+  "ac_name": "KHAMBHALIA",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P030.zip"
+ },
+ {
+  "ac_no": 31,
+  "ac_name": "DWARKA",
+  "district_name": "JAMNAGAR",
+  "district_no": 4,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P031.zip"
+ },
+ {
+  "ac_no": 32,
+  "ac_name": "PORBANDAR",
+  "district_name": "PORBANDAR",
+  "district_no": 20,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P032.zip"
+ },
+ {
+  "ac_no": 33,
+  "ac_name": "KUTIYANA",
+  "district_name": "PORBANDAR",
+  "district_no": 20,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P033.zip"
+ },
+ {
+  "ac_no": 34,
+  "ac_name": "MANGROL",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P034.zip"
+ },
+ {
+  "ac_no": 35,
+  "ac_name": "MANAVADAR",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P035.zip"
+ },
+ {
+  "ac_no": 36,
+  "ac_name": "KESHOD (SC)",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P036.zip"
+ },
+ {
+  "ac_no": 37,
+  "ac_name": "TALALA",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P037.zip"
+ },
+ {
+  "ac_no": 38,
+  "ac_name": "SOMNATH",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P038.zip"
+ },
+ {
+  "ac_no": 39,
+  "ac_name": "UNA",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P039.zip"
+ },
+ {
+  "ac_no": 40,
+  "ac_name": "VISAVADAR",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P040.zip"
+ },
+ {
+  "ac_no": 41,
+  "ac_name": "MALIYA",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P041.zip"
+ },
+ {
+  "ac_no": 42,
+  "ac_name": "JUNAGADH",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P042.zip"
+ },
+ {
+  "ac_no": 43,
+  "ac_name": "BABRA",
+  "district_name": "AMRELI",
+  "district_no": 6,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P043.zip"
+ },
+ {
+  "ac_no": 44,
+  "ac_name": "LATHI",
+  "district_name": "AMRELI",
+  "district_no": 6,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P044.zip"
+ },
+ {
+  "ac_no": 45,
+  "ac_name": "AMRELI",
+  "district_name": "AMRELI",
+  "district_no": 6,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P045.zip"
+ },
+ {
+  "ac_no": 46,
+  "ac_name": "DHARI",
+  "district_name": "AMRELI",
+  "district_no": 6,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P046.zip"
+ },
+ {
+  "ac_no": 47,
+  "ac_name": "KODINAR",
+  "district_name": "JUNAGADH",
+  "district_no": 5,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P047.zip"
+ },
+ {
+  "ac_no": 48,
+  "ac_name": "RAJULA",
+  "district_name": "AMRELI",
+  "district_no": 6,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P048.zip"
+ },
+ {
+  "ac_no": 49,
+  "ac_name": "BOTAD",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P049.zip"
+ },
+ {
+  "ac_no": 50,
+  "ac_name": "GADHADA (SC)",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P050.zip"
+ },
+ {
+  "ac_no": 51,
+  "ac_name": "PALITANA",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P051.zip"
+ },
+ {
+  "ac_no": 52,
+  "ac_name": "SIHOR",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P052.zip"
+ },
+ {
+  "ac_no": 53,
+  "ac_name": "KUNDLA",
+  "district_name": "AMRELI",
+  "district_no": 6,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P053.zip"
+ },
+ {
+  "ac_no": 54,
+  "ac_name": "MAHUVA",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P054.zip"
+ },
+ {
+  "ac_no": 55,
+  "ac_name": "TALAJA",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P055.zip"
+ },
+ {
+  "ac_no": 56,
+  "ac_name": "GHOGHA",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P056.zip"
+ },
+ {
+  "ac_no": 57,
+  "ac_name": "BHAVNAGAR (NORTH)",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P057.zip"
+ },
+ {
+  "ac_no": 58,
+  "ac_name": "BHAVNAGAR (SOUTH)",
+  "district_name": "BHAVNAGAR",
+  "district_no": 7,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P058.zip"
+ },
+ {
+  "ac_no": 59,
+  "ac_name": "DHANDHUKA",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P059.zip"
+ },
+ {
+  "ac_no": 60,
+  "ac_name": "DHOLKA",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P060.zip"
+ },
+ {
+  "ac_no": 61,
+  "ac_name": "BAVLA (SC)",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P061.zip"
+ },
+ {
+  "ac_no": 62,
+  "ac_name": "MANDAL",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P062.zip"
+ },
+ {
+  "ac_no": 63,
+  "ac_name": "VIRAMGAM",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P063.zip"
+ },
+ {
+  "ac_no": 64,
+  "ac_name": "SARKHEJ",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P064.zip"
+ },
+ {
+  "ac_no": 65,
+  "ac_name": "DASKROI",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P065.zip"
+ },
+ {
+  "ac_no": 66,
+  "ac_name": "DEHGAM",
+  "district_name": "GANDHINAGAR",
+  "district_no": 9,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P066.zip"
+ },
+ {
+  "ac_no": 67,
+  "ac_name": "SABARMATI",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P067.zip"
+ },
+ {
+  "ac_no": 68,
+  "ac_name": "ELLIS BRIDGE",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P068.zip"
+ },
+ {
+  "ac_no": 69,
+  "ac_name": "DARIAPUR KAZIPUR",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P069.zip"
+ },
+ {
+  "ac_no": 70,
+  "ac_name": "SHAHPUR",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P070.zip"
+ },
+ {
+  "ac_no": 71,
+  "ac_name": "KALUPUR",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P071.zip"
+ },
+ {
+  "ac_no": 72,
+  "ac_name": "ASARWA",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P072.zip"
+ },
+ {
+  "ac_no": 73,
+  "ac_name": "RAKHIAL",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P073.zip"
+ },
+ {
+  "ac_no": 74,
+  "ac_name": "SHAHER KOTDA (SC)",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P074.zip"
+ },
+ {
+  "ac_no": 75,
+  "ac_name": "KHADIA",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P075.zip"
+ },
+ {
+  "ac_no": 76,
+  "ac_name": "JAMALPUR",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P076.zip"
+ },
+ {
+  "ac_no": 77,
+  "ac_name": "MANINAGAR",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P077.zip"
+ },
+ {
+  "ac_no": 78,
+  "ac_name": "NARODA",
+  "district_name": "AHMEDABAD",
+  "district_no": 8,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P078.zip"
+ },
+ {
+  "ac_no": 79,
+  "ac_name": "GANDHINAGAR",
+  "district_name": "GANDHINAGAR",
+  "district_no": 9,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P079.zip"
+ },
+ {
+  "ac_no": 80,
+  "ac_name": "KALOL",
+  "district_name": "GANDHINAGAR",
+  "district_no": 9,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P080.zip"
+ },
+ {
+  "ac_no": 81,
+  "ac_name": "KADI",
+  "district_name": "MEHSANA",
+  "district_no": 10,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P081.zip"
+ },
+ {
+  "ac_no": 82,
+  "ac_name": "JOTANA (SC)",
+  "district_name": "MEHSANA",
+  "district_no": 10,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P082.zip"
+ },
+ {
+  "ac_no": 83,
+  "ac_name": "MEHSANA",
+  "district_name": "MEHSANA",
+  "district_no": 10,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P083.zip"
+ },
+ {
+  "ac_no": 84,
+  "ac_name": "MANSA",
+  "district_name": "GANDHINAGAR",
+  "district_no": 9,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P084.zip"
+ },
+ {
+  "ac_no": 85,
+  "ac_name": "VIJAPUR",
+  "district_name": "MEHSANA",
+  "district_no": 10,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P085.zip"
+ },
+ {
+  "ac_no": 86,
+  "ac_name": "VISNAGAR",
+  "district_name": "MEHSANA",
+  "district_no": 10,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P086.zip"
+ },
+ {
+  "ac_no": 87,
+  "ac_name": "KHERALU",
+  "district_name": "MEHSANA",
+  "district_no": 10,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P087.zip"
+ },
+ {
+  "ac_no": 88,
+  "ac_name": "UNJHA",
+  "district_name": "MEHSANA",
+  "district_no": 10,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P088.zip"
+ },
+ {
+  "ac_no": 89,
+  "ac_name": "SIDHPUR",
+  "district_name": "PATAN",
+  "district_no": 21,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P089.zip"
+ },
+ {
+  "ac_no": 90,
+  "ac_name": "VAGDOD",
+  "district_name": "PATAN",
+  "district_no": 21,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P090.zip"
+ },
+ {
+  "ac_no": 91,
+  "ac_name": "PATAN",
+  "district_name": "PATAN",
+  "district_no": 21,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P091.zip"
+ },
+ {
+  "ac_no": 92,
+  "ac_name": "CHANASMA",
+  "district_name": "PATAN",
+  "district_no": 21,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P092.zip"
+ },
+ {
+  "ac_no": 93,
+  "ac_name": "SAMI",
+  "district_name": "PATAN",
+  "district_no": 21,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P093.zip"
+ },
+ {
+  "ac_no": 94,
+  "ac_name": "RADHANPUR",
+  "district_name": "PATAN",
+  "district_no": 21,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P094.zip"
+ },
+ {
+  "ac_no": 95,
+  "ac_name": "VAV",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P095.zip"
+ },
+ {
+  "ac_no": 96,
+  "ac_name": "DEODAR",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P096.zip"
+ },
+ {
+  "ac_no": 97,
+  "ac_name": "KANKREJ",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P097.zip"
+ },
+ {
+  "ac_no": 98,
+  "ac_name": "DEESA",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P098.zip"
+ },
+ {
+  "ac_no": 99,
+  "ac_name": "DHANERA",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P099.zip"
+ },
+ {
+  "ac_no": 100,
+  "ac_name": "PALANPUR",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P100.zip"
+ },
+ {
+  "ac_no": 101,
+  "ac_name": "VADGAM (SC)",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P101.zip"
+ },
+ {
+  "ac_no": 102,
+  "ac_name": "DANTA",
+  "district_name": "BANASKANTHA",
+  "district_no": 11,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P102.zip"
+ },
+ {
+  "ac_no": 103,
+  "ac_name": "KHEDBRAHMA (ST)",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P103.zip"
+ },
+ {
+  "ac_no": 104,
+  "ac_name": "IDAR (SC)",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P104.zip"
+ },
+ {
+  "ac_no": 105,
+  "ac_name": "BHILODA",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P105.zip"
+ },
+ {
+  "ac_no": 106,
+  "ac_name": "HIMATNAGAR",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P106.zip"
+ },
+ {
+  "ac_no": 107,
+  "ac_name": "PRANTIJ",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P107.zip"
+ },
+ {
+  "ac_no": 108,
+  "ac_name": "MODASA",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P108.zip"
+ },
+ {
+  "ac_no": 109,
+  "ac_name": "BAYAD",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P109.zip"
+ },
+ {
+  "ac_no": 110,
+  "ac_name": "MEGHRAJ",
+  "district_name": "SABARKANTHA",
+  "district_no": 12,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P110.zip"
+ },
+ {
+  "ac_no": 111,
+  "ac_name": "SANTRAMPUR",
+  "district_name": "PANCHMAHALS",
+  "district_no": 13,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P111.zip"
+ },
+ {
+  "ac_no": 112,
+  "ac_name": "JHALOD (ST)",
+  "district_name": "DOHAD",
+  "district_no": 22,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P112.zip"
+ },
+ {
+  "ac_no": 113,
+  "ac_name": "LIMDI (ST)",
+  "district_name": "DOHAD",
+  "district_no": 22,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P113.zip"
+ },
+ {
+  "ac_no": 114,
+  "ac_name": "DAHOD (ST)",
+  "district_name": "DOHAD",
+  "district_no": 22,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P114.zip"
+ },
+ {
+  "ac_no": 115,
+  "ac_name": "LIMKHEDA (ST)",
+  "district_name": "DOHAD",
+  "district_no": 22,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P115.zip"
+ },
+ {
+  "ac_no": 116,
+  "ac_name": "DEVGADH BARIA",
+  "district_name": "DOHAD",
+  "district_no": 22,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P116.zip"
+ },
+ {
+  "ac_no": 117,
+  "ac_name": "RAJGADH",
+  "district_name": "PANCHMAHALS",
+  "district_no": 13,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P117.zip"
+ },
+ {
+  "ac_no": 118,
+  "ac_name": "HALOL",
+  "district_name": "PANCHMAHALS",
+  "district_no": 13,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P118.zip"
+ },
+ {
+  "ac_no": 119,
+  "ac_name": "KALOL",
+  "district_name": "PANCHMAHALS",
+  "district_no": 13,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P119.zip"
+ },
+ {
+  "ac_no": 120,
+  "ac_name": "GODHRA",
+  "district_name": "PANCHMAHALS",
+  "district_no": 13,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P120.zip"
+ },
+ {
+  "ac_no": 121,
+  "ac_name": "SHEHRA",
+  "district_name": "PANCHMAHALS",
+  "district_no": 13,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P121.zip"
+ },
+ {
+  "ac_no": 122,
+  "ac_name": "LUNAVADA",
+  "district_name": "PANCHMAHALS",
+  "district_no": 13,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P122.zip"
+ },
+ {
+  "ac_no": 123,
+  "ac_name": "RANDHIKPUR (ST)",
+  "district_name": "DOHAD",
+  "district_no": 22,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P123.zip"
+ },
+ {
+  "ac_no": 124,
+  "ac_name": "BALASINOR",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P124.zip"
+ },
+ {
+  "ac_no": 125,
+  "ac_name": "KAPADVANJ",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P125.zip"
+ },
+ {
+  "ac_no": 126,
+  "ac_name": "THASRA",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P126.zip"
+ },
+ {
+  "ac_no": 127,
+  "ac_name": "UMRETH",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P127.zip"
+ },
+ {
+  "ac_no": 128,
+  "ac_name": "KATHLAL",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P128.zip"
+ },
+ {
+  "ac_no": 129,
+  "ac_name": "MEHMEDABAD",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P129.zip"
+ },
+ {
+  "ac_no": 130,
+  "ac_name": "MAHUDHA",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P130.zip"
+ },
+ {
+  "ac_no": 131,
+  "ac_name": "NADIAD",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P131.zip"
+ },
+ {
+  "ac_no": 132,
+  "ac_name": "CHAKLASI",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P132.zip"
+ },
+ {
+  "ac_no": 133,
+  "ac_name": "ANAND",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P133.zip"
+ },
+ {
+  "ac_no": 134,
+  "ac_name": "SARSA",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P134.zip"
+ },
+ {
+  "ac_no": 135,
+  "ac_name": "PETLAD",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P135.zip"
+ },
+ {
+  "ac_no": 136,
+  "ac_name": "SOJITRA (SC)",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P136.zip"
+ },
+ {
+  "ac_no": 137,
+  "ac_name": "MATAR",
+  "district_name": "KAIRA",
+  "district_no": 14,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P137.zip"
+ },
+ {
+  "ac_no": 138,
+  "ac_name": "BORSAD",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P138.zip"
+ },
+ {
+  "ac_no": 139,
+  "ac_name": "BHADRAN",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P139.zip"
+ },
+ {
+  "ac_no": 140,
+  "ac_name": "CAMBAY",
+  "district_name": "ANAND",
+  "district_no": 23,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P140.zip"
+ },
+ {
+  "ac_no": 141,
+  "ac_name": "CHHOTA UDAIPUR (ST)",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P141.zip"
+ },
+ {
+  "ac_no": 142,
+  "ac_name": "JETPUR",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P142.zip"
+ },
+ {
+  "ac_no": 143,
+  "ac_name": "NASVADI (ST)",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P143.zip"
+ },
+ {
+  "ac_no": 144,
+  "ac_name": "SANKHEDA (ST)",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P144.zip"
+ },
+ {
+  "ac_no": 145,
+  "ac_name": "DABHOI",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P145.zip"
+ },
+ {
+  "ac_no": 146,
+  "ac_name": "SAVLI",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P146.zip"
+ },
+ {
+  "ac_no": 147,
+  "ac_name": "BARODA CITY",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P147.zip"
+ },
+ {
+  "ac_no": 148,
+  "ac_name": "SAYAJIGANJ",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P148.zip"
+ },
+ {
+  "ac_no": 149,
+  "ac_name": "RAOPURA",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P149.zip"
+ },
+ {
+  "ac_no": 150,
+  "ac_name": "VAGHODIA",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P150.zip"
+ },
+ {
+  "ac_no": 151,
+  "ac_name": "BARODA RURAL",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P151.zip"
+ },
+ {
+  "ac_no": 152,
+  "ac_name": "PADRA",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P152.zip"
+ },
+ {
+  "ac_no": 153,
+  "ac_name": "KARJAN (SC)",
+  "district_name": "BARODA",
+  "district_no": 15,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P153.zip"
+ },
+ {
+  "ac_no": 154,
+  "ac_name": "JAMBUSAR",
+  "district_name": "BROACH",
+  "district_no": 16,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P154.zip"
+ },
+ {
+  "ac_no": 155,
+  "ac_name": "VAGRA",
+  "district_name": "BROACH",
+  "district_no": 16,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P155.zip"
+ },
+ {
+  "ac_no": 156,
+  "ac_name": "BROACH",
+  "district_name": "BROACH",
+  "district_no": 16,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P156.zip"
+ },
+ {
+  "ac_no": 157,
+  "ac_name": "ANKLESHWAR",
+  "district_name": "BROACH",
+  "district_no": 16,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P157.zip"
+ },
+ {
+  "ac_no": 158,
+  "ac_name": "JHAGADIYA (ST)",
+  "district_name": "BROACH",
+  "district_no": 16,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P158.zip"
+ },
+ {
+  "ac_no": 159,
+  "ac_name": "DEDIAPADA (ST)",
+  "district_name": "NARMADA",
+  "district_no": 24,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P159.zip"
+ },
+ {
+  "ac_no": 160,
+  "ac_name": "RAJPIPLA (ST)",
+  "district_name": "NARMADA",
+  "district_no": 24,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P160.zip"
+ },
+ {
+  "ac_no": 161,
+  "ac_name": "NIJHAR (ST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P161.zip"
+ },
+ {
+  "ac_no": 162,
+  "ac_name": "MANGROL (ST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P162.zip"
+ },
+ {
+  "ac_no": 163,
+  "ac_name": "SONGADH (ST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P163.zip"
+ },
+ {
+  "ac_no": 164,
+  "ac_name": "VYARA (ST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P164.zip"
+ },
+ {
+  "ac_no": 165,
+  "ac_name": "MAHUVA (ST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P165.zip"
+ },
+ {
+  "ac_no": 166,
+  "ac_name": "BARDOLI (ST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P166.zip"
+ },
+ {
+  "ac_no": 167,
+  "ac_name": "KAMREJ (ST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P167.zip"
+ },
+ {
+  "ac_no": 168,
+  "ac_name": "OLPAD",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P168.zip"
+ },
+ {
+  "ac_no": 169,
+  "ac_name": "SURAT CITY (NORTH)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P169.zip"
+ },
+ {
+  "ac_no": 170,
+  "ac_name": "SURAT CITY (EAST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P170.zip"
+ },
+ {
+  "ac_no": 171,
+  "ac_name": "SURAT CITY (WEST)",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P171.zip"
+ },
+ {
+  "ac_no": 172,
+  "ac_name": "CHORASI",
+  "district_name": "SURAT",
+  "district_no": 17,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P172.zip"
+ },
+ {
+  "ac_no": 173,
+  "ac_name": "JALALPORE",
+  "district_name": "NAVSARI",
+  "district_no": 25,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P173.zip"
+ },
+ {
+  "ac_no": 174,
+  "ac_name": "NAVSARI (ST)",
+  "district_name": "NAVSARI",
+  "district_no": 25,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P174.zip"
+ },
+ {
+  "ac_no": 175,
+  "ac_name": "GANDEVI",
+  "district_name": "NAVSARI",
+  "district_no": 25,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P175.zip"
+ },
+ {
+  "ac_no": 176,
+  "ac_name": "CHIKHLI (ST)",
+  "district_name": "NAVSARI",
+  "district_no": 25,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P176.zip"
+ },
+ {
+  "ac_no": 177,
+  "ac_name": "DANGS-VANSDA (ST)",
+  "district_name": "DANGS",
+  "district_no": 19,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P177.zip"
+ },
+ {
+  "ac_no": 178,
+  "ac_name": "BULSAR",
+  "district_name": "BULSAR",
+  "district_no": 18,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P178.zip"
+ },
+ {
+  "ac_no": 179,
+  "ac_name": "DHARAMPUR (ST)",
+  "district_name": "BULSAR",
+  "district_no": 18,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P179.zip"
+ },
+ {
+  "ac_no": 180,
+  "ac_name": "MOTA PONDHA (ST)",
+  "district_name": "BULSAR",
+  "district_no": 18,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P180.zip"
+ },
+ {
+  "ac_no": 181,
+  "ac_name": "PARDI (ST)",
+  "district_name": "BULSAR",
+  "district_no": 18,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P181.zip"
+ },
+ {
+  "ac_no": 182,
+  "ac_name": "UMBERGAON (ST)",
+  "district_name": "BULSAR",
+  "district_no": 18,
+  "zip_url": "https://erms.gujarat.gov.in/ceo-gujarat/ADD_DEL_MOD_LIST/2002/P182.zip"
+ }
+]

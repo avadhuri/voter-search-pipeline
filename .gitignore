@@ -1,8 +1,8 @@
 venv/
 __pycache__/
 *.pyc
-data/raw/
-data/db/
+data/
+output/
 *.log
 .DS_Store
 .pytest_cache/
