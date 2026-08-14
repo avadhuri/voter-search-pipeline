@@ -119,6 +119,20 @@ CREATE TABLE ac_index (
     has_locality INTEGER,
     PRIMARY KEY (state, ac_code, contract)
 );
+
+-- Distinct village/locality strings per AC, needed by the serving app's
+-- picker (free-text locality search over every AC's label, rendered before
+-- any AC/per-AC-file is fetched -- see VoterRecord.locality). Small (a few
+-- hundred distinct strings per AC at most), so it stays in the eagerly-
+-- downloaded per-state catalog rather than requiring every state's per-AC
+-- files to be present just to power AC discovery.
+DROP TABLE IF EXISTS catalog_locality;
+CREATE TABLE catalog_locality (
+    state TEXT,
+    ac_code TEXT,
+    locality TEXT,
+    PRIMARY KEY (state, ac_code, locality)
+);
 """
 
 INSERT_SQL = """
@@ -140,6 +154,10 @@ INSERT INTO ac_index (
     state, ac_code, ac_name, district, contract, patch,
     row_count, file_size_bytes, has_locality
 ) VALUES (?,?,?,?,?,?,?,?,?)
+"""
+
+CATALOG_LOCALITY_INSERT_SQL = """
+INSERT OR IGNORE INTO catalog_locality (state, ac_code, locality) VALUES (?,?,?)
 """
 
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
@@ -357,15 +375,17 @@ def _build_one_ac(task):
         conn = sqlite3.connect(ac_db_path)
         try:
             row_count = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
-            has_locality = conn.execute(
-                "SELECT 1 FROM voters WHERE locality IS NOT NULL AND locality != '' LIMIT 1"
-            ).fetchone() is not None
+            localities = sorted(
+                loc for (loc,) in conn.execute(
+                    "SELECT DISTINCT locality FROM voters WHERE locality IS NOT NULL AND locality != ''"
+                ).fetchall()
+            )
         finally:
             conn.close()
         return {
             "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
             "row_count": row_count, "file_size_bytes": os.path.getsize(ac_db_path),
-            "has_locality": has_locality, "skipped": True,
+            "has_locality": bool(localities), "localities": localities, "skipped": True,
         }
 
     connector = connector_cls()
@@ -380,11 +400,11 @@ def _build_one_ac(task):
     _finalize_voters_only(ac_conn)
     ac_conn.close()
 
-    has_locality = any(r.locality for r in records)
+    localities = sorted({r.locality for r in records if r.locality})
     return {
         "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
         "row_count": len(records), "file_size_bytes": os.path.getsize(ac_db_path),
-        "has_locality": has_locality, "skipped": False,
+        "has_locality": bool(localities), "localities": localities, "skipped": False,
     }
 
 
@@ -452,6 +472,11 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, wor
             )
             for r in results
         ]
+        locality_rows = [
+            (state_id, r["ac_code"], loc)
+            for r in results
+            for loc in r["localities"]
+        ]
 
         print(f"{state_id}: {state_total} records across {len(paths)} AC file(s) ({pool_size} worker(s))")
         grand_total += state_total
@@ -473,6 +498,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, wor
             locality_coverage, built_at,
         ))
         cat_conn.executemany(AC_INDEX_INSERT_SQL, ac_index_rows)
+        cat_conn.executemany(CATALOG_LOCALITY_INSERT_SQL, locality_rows)
         cat_conn.commit()
         cat_conn.close()
         print(f"  wrote catalog {catalog_path}")
