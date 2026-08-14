@@ -18,6 +18,7 @@ dependencies = [
     "pdfplumber==0.11.8",
     "playwright==1.60.0",
     "requests==2.32.5",
+    "openpyxl==3.1.5",
 ]
 
 [project.optional-dependencies]
@@ -49,4 +50,4 @@ packages = ["states"]
 states = "states"
 
 [tool.setuptools.package-data]
-states = ["meta/*.json"]
+states = ["meta/*.json", "meta/sir_source_urls/*.json", "meta/sir_source_urls/*.xlsx"]
