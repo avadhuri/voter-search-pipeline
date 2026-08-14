@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac push-ac-db-dev migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-west-bengal-all download-haryana build-db build-db-ac push-ac-db-dev migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -35,11 +35,35 @@ AC_DB_LOCAL_DIR := $(DB_DIR)/ac
 GCS_AC_BUCKET_DEV ?= oldvoterlist-ac-db-dev
 GCP_PROJECT ?= oldvoterlist-prod
 
-# The 19 Kolkata ACs whose 2002 roll is Latin-typeset (name search works);
-# the other ~275 West Bengal ACs are Bengali-typeset with no ToUnicode map,
-# so names can't be extracted -- see states/west_bengal.py's module
-# docstring. This is the practical default for `make download-west-bengal`.
+# The 19 Kolkata ACs whose 2002 roll is Latin-typeset, so their names decode
+# straight out of the text layer. The other ~275 West Bengal ACs are
+# Bengali-typeset with no ToUnicode map; their names come out only with the
+# OCR path below (WB_OCR=1) -- see states/west_bengal.py's module docstring.
+# This 19 stays the practical default for `make download-west-bengal` because
+# it is the free, exactly-decoded subset; use download-west-bengal-all (or
+# AC=) for the Bengali ones.
 WB_KOLKATA_LATIN_ACS := AC141,AC142,AC143,AC144,AC145,AC154,AC153,AC155,AC156,AC157,AC158,AC159,AC160,AC146,AC147,AC148,AC149,AC150,AC151
+
+# Bengali-name OCR for West Bengal (states/west_bengal_ocr.py). Off unless
+# WB_OCR=1, and deliberately not defaulted on: the default engine is Google
+# Cloud Vision at ~$1.50 per 1000 pages, and a full ~275-AC statewide run is
+# on the order of 660K pages, i.e. ~$1,000 and many hours. WB_OCR_ENGINE=
+# tesseract runs the identical pipeline for free and somewhat less accurately
+# (43/45 vs 39/45 exact on the sample -- see states/west_bengal_ocr.py).
+# WB_OCR_WORKERS is how many parts are OCR'd concurrently.
+#
+#   make download-west-bengal AC=AC001,AC050
+#   make build-db STATES=west_bengal WB_OCR=1
+#
+# Vision needs `gcloud auth login` and a project with the Vision API enabled
+# (GCP_PROJECT, default $(GCP_PROJECT)); tesseract needs a `ben` model. Those
+# are one-time setup, not per-run steps.
+WB_OCR ?=
+WB_OCR_ENGINE ?=
+WB_OCR_WORKERS ?= 6
+OCR_ENV := $(if $(WB_OCR),WB_OCR=$(WB_OCR)) \
+	$(if $(WB_OCR_ENGINE),WB_OCR_ENGINE=$(WB_OCR_ENGINE)) \
+	WB_OCR_WORKERS=$(WB_OCR_WORKERS) GCP_PROJECT=$(GCP_PROJECT)
 
 # A demo-sized spread of Haryana's 44 usable (text-layer) ACs, one per
 # district, rather than the full ~7,800-part statewide set -- see
@@ -85,6 +109,13 @@ else
 	$(PY) -m download_west_bengal --ac $(WB_KOLKATA_LATIN_ACS) --out-dir $(WB_RAW_DIR)
 endif
 
+# All 294 ACs -- 61,531 part PDFs, ~15 GB, hours at the polite default rate.
+# This is the fetch half of a full statewide Bengali OCR run; the OCR half is
+# `make build-db STATES=west_bengal WB_OCR=1`. Resumable: already-downloaded
+# ACs are skipped, so an interrupted run is safe to re-run.
+download-west-bengal-all: ## Fetch ALL 294 West Bengal ACs (~15 GB) -- the full Bengali set
+	$(PY) -m download_west_bengal --out-dir $(WB_RAW_DIR)
+
 # `make download-haryana` fetches the 9-AC demo spread; `make
 # download-haryana AC=HR61` (or a comma-separated list) fetches specific ACs.
 download-haryana: ## Fetch Haryana's 2002 roll (demo AC spread by default; AC= to override)
@@ -98,13 +129,13 @@ endif
 # `make build-db STATES=karnataka,west_bengal,haryana` combines every listed
 # state's raw files into $(MULTI_DB). `make build-db` alone defaults to all
 # three live states combined.
-build-db: ## Build a SQLite DB from downloaded rolls (STATES=a,b,c; AC= for one AC)
+build-db: ## Build a SQLite DB from downloaded rolls (STATES=a,b,c; AC= for one AC; WB_OCR=1 for Bengali names)
 ifdef AC
 	$(PY) -m build_db $(RAW_DIR)/$(AC).csv $(DB_DIR)/$(AC).sqlite
 else ifdef STATES
-	$(PY) -m build_db --states $(STATES) $(MULTI_DB)
+	$(OCR_ENV) $(PY) -m build_db --states $(STATES) $(MULTI_DB)
 else
-	$(PY) -m build_db --states karnataka,west_bengal,haryana $(MULTI_DB)
+	$(OCR_ENV) $(PY) -m build_db --states karnataka,west_bengal,haryana $(MULTI_DB)
 endif
 
 # One-time backfill of full_name_latin/full_relative_name_latin on an
@@ -124,8 +155,8 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 # fans per-AC parsing out across (default: cpu_count - 1); an interrupted
 # run is safe to just re-run -- already-finalized AC files are skipped, not
 # rebuilt.
-build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (STATES=a,b,c, default karnataka,west_bengal,haryana; WORKERS=n)
-	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(AC_DB_LOCAL_DIR) $(if $(WORKERS),--workers $(WORKERS),)
+build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (STATES=a,b,c, default karnataka,west_bengal,haryana; WORKERS=n; WB_OCR=1)
+	PYTHONUNBUFFERED=1 $(OCR_ENV) $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(AC_DB_LOCAL_DIR) $(if $(WORKERS),--workers $(WORKERS),)
 
 # Pushes newly-built per-AC data to the dev bucket only -- see
 # GCS_AC_BUCKET_DEV's comment above for why there's no prod equivalent
