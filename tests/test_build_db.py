@@ -2,7 +2,7 @@ import sqlite3
 
 import build_db
 from states.base import Constituency, StateConnector, VoterRecord
-from states.karnataka import KarnatakaConnector
+from states.karnataka import CSV_URL_TEMPLATE, KarnatakaConnector
 
 A085_ROWS = (
     "BANGALORE URBAN,A085,Shivajinagar,5,201,,Shivaram,,Ramaiah,,F,45,M\r\n"
@@ -25,6 +25,13 @@ def test_build_single(tmp_path):
     assert len(rows) == 2
     fts_count = conn.execute("SELECT COUNT(*) FROM voters_fts").fetchone()[0]
     assert fts_count == 2
+
+    # Karnataka rows get the per-AC CSV URL (no per-part granularity exists),
+    # same for every row of the AC regardless of part_no/serial_no.
+    source_urls = {
+        r[0] for r in conn.execute("SELECT source_url FROM voters")
+    }
+    assert source_urls == {CSV_URL_TEMPLATE.format(ac_code="A085")}
     conn.close()
 
 
@@ -121,8 +128,9 @@ def test_build_per_ac_matches_combined(tmp_path, monkeypatch):
     per_ac_total = 0
     for path, expected_ac in ((a085_path, "A085"), (a012_path, "A012")):
         conn = sqlite3.connect(path)
-        rows = conn.execute("SELECT ac_code FROM voters").fetchall()
+        rows = conn.execute("SELECT ac_code, source_url FROM voters").fetchall()
         assert all(r[0] == expected_ac for r in rows)
+        assert all(r[1] == CSV_URL_TEMPLATE.format(ac_code=expected_ac) for r in rows)
         per_ac_total += len(rows)
         # voters_fts is confirmed dead weight for per-AC files -- shouldn't exist.
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}

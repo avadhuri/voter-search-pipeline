@@ -56,6 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from states.base import Constituency
 from states.karnataka import KarnatakaConnector
 from states.registry import STATE_CONNECTORS
+from states.source_urls import resolve_source_url
 from transliteration import backfill_latin_columns
 
 VOTERS_SCHEMA = """
@@ -79,7 +80,8 @@ CREATE TABLE voters (
     age INTEGER,
     gender TEXT,
     remark TEXT,
-    locality TEXT
+    locality TEXT,
+    source_url TEXT
 );
 """
 
@@ -139,8 +141,8 @@ INSERT_SQL = """
 INSERT INTO voters (
     state, roll_year, district, ac_code, ac_name, part_no, serial_no,
     local_ref, full_name, full_relative_name, relation_code,
-    relation_label, age, gender, remark, locality
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    relation_label, age, gender, remark, locality, source_url
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 STATE_COVERAGE_INSERT_SQL = """
@@ -183,7 +185,7 @@ def _records_to_rows(records):
             r.part_no, r.serial_no, r.local_ref, r.full_name,
             r.full_relative_name, r.relation_code,
             RELATION_LABELS.get(r.relation_code, r.relation_code),
-            r.age, r.gender, r.remark, r.locality,
+            r.age, r.gender, r.remark, r.locality, resolve_source_url(r),
         )
         for r in records
     ]
