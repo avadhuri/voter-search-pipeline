@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac push-ac-db-dev migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -20,6 +20,20 @@ WB_RAW_DIR := data/raw/west_bengal
 HR_RAW_DIR := data/raw/haryana
 DB_DIR := data/db
 MULTI_DB := $(DB_DIR)/multi_state_2002.sqlite
+
+# Native output for per-AC-file serving (see build_db.py's --per-ac usage
+# above) -- one <state>/<ac_code>-<contract>.p<patch>.sqlite per AC plus
+# catalog/<state>.sqlite per state, mirroring exactly what the closed
+# voter_search_engine app fetches from GCS.
+AC_DB_LOCAL_DIR := $(DB_DIR)/ac
+
+# Every deploy goes to the dev bucket first (see "Deploying built data" in
+# the README) -- promotion from dev to production is a separate,
+# maintainer-only step that lives in voter_search_engine (closed), not
+# here, so there's deliberately no GCS_AC_BUCKET_PROD/push-ac-db-prod
+# target in this repo.
+GCS_AC_BUCKET_DEV ?= oldvoterlist-ac-db-dev
+GCP_PROJECT ?= oldvoterlist-prod
 
 # The 19 Kolkata ACs whose 2002 roll is Latin-typeset (name search works);
 # the other ~275 West Bengal ACs are Bengali-typeset with no ToUnicode map,
@@ -98,6 +112,34 @@ endif
 # re-run -- only fills still-NULL rows.
 migrate-translit: ## Backfill Latin-transliteration columns on an already-built DB
 	$(PY) -m migrate_translit $${DB_PATH:-$(MULTI_DB)}
+
+# `make build-db-ac STATES=haryana` builds just Haryana's per-AC files;
+# `make build-db-ac` alone defaults to all three live states. Always
+# contract=c1, patch=0 today -- there's no PATCH= override yet, so
+# rebuilding an AC that was already pushed overwrites that same p0 file
+# in place rather than publishing a new patch revision alongside it. Fine
+# for the current single-collaborator, small-scale workflow; revisit if
+# that ever needs to change (e.g. republishing needs an old patch kept
+# live for in-flight requests). WORKERS=N caps the process pool build_db.py
+# fans per-AC parsing out across (default: cpu_count - 1); an interrupted
+# run is safe to just re-run -- already-finalized AC files are skipped, not
+# rebuilt.
+build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (STATES=a,b,c, default karnataka,west_bengal,haryana; WORKERS=n)
+	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(AC_DB_LOCAL_DIR) $(if $(WORKERS),--workers $(WORKERS),)
+
+# Pushes newly-built per-AC data to the dev bucket only -- see
+# GCS_AC_BUCKET_DEV's comment above for why there's no prod equivalent
+# here. Requires gcloud auth'd as an account with roles/storage.objectAdmin
+# on the bucket (ask the maintainer for access) -- doesn't attempt to
+# create the bucket if missing/unreachable, unlike voter_search_engine's
+# equivalent maintainer-only target, since objectAdmin alone can't create
+# buckets; a collaborator hitting the describe check below should ask for
+# access rather than being handed bucket-creation rights just to unblock
+# this.
+push-ac-db-dev: ## Copy locally-built per-AC files (make build-db-ac) up to the dev GCS bucket
+	@gcloud storage buckets describe "gs://$(GCS_AC_BUCKET_DEV)" --project=$(GCP_PROJECT) >/dev/null 2>&1 || \
+		{ echo "gs://$(GCS_AC_BUCKET_DEV) not reachable -- check 'gcloud auth login'/'gcloud config set project $(GCP_PROJECT)', or ask the maintainer for bucket access"; exit 1; }
+	gcloud storage rsync -r $(AC_DB_LOCAL_DIR) gs://$(GCS_AC_BUCKET_DEV) --project=$(GCP_PROJECT)
 
 # `make search NAME="Ramesh Kumar"` queries $(MULTI_DB). `make search
 # DB=data/db/A085.sqlite NAME="..." ARGS="--ac A085 --limit 10"` overrides

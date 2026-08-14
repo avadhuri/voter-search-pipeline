@@ -35,6 +35,32 @@ pip install -e .
 pip install -e .[eval]
 ```
 
+## Deploying built data to the dev bucket
+
+Production serving reads one small `.sqlite` per constituency (not the
+combined DB above), lazily fetched from GCS by the closed
+`voter_search_engine` app. Every deploy lands in the **dev** bucket first;
+promoting dev's data to production is a separate, maintainer-only step
+that happens in that closed repo, not here — this repo only ever pushes
+to dev.
+
+If you've been granted `roles/storage.objectAdmin` on
+`oldvoterlist-ac-db-dev` (ask the maintainer):
+
+```
+gcloud auth login                              # the Google account you were granted access with
+gcloud config set project oldvoterlist-prod
+
+make build-db-ac STATES=karnataka,west_bengal,haryana   # or just the state(s) you changed
+make push-ac-db-dev
+```
+
+`make build-db-ac` writes `data/db/ac/<state>/<ac_code>-c1.p0.sqlite` plus
+`data/db/ac/catalog/<state>.sqlite` per state; `make push-ac-db-dev`
+rsyncs that whole tree to `gs://oldvoterlist-ac-db-dev` (only
+new/changed files, safe to re-run). Run `make download-<state>` first for
+any AC you haven't fetched yet.
+
 ## Adding a new state
 
 1. Recon its CEO portal / data source (format, CAPTCHA or not, per-AC vs
