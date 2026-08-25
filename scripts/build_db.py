@@ -32,7 +32,7 @@ Usage:
         local CLI/dev use (scripts/search.py, ad hoc queries) even though
         production serving has moved to --per-ac below.
 
-    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0] [--workers N] [--roll-year YYYY] [--acs AC1,AC2]
+    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0] [--workers N] [--roll-year YYYY] [--acs AC1,AC2] [--allow-catalog-shrink]
         Build one <out_dir>/<state>/<ac_code>-<contract>.p<patch>.sqlite per
         AC, plus one <out_dir>/catalog/<state>.sqlite per state (a small
         state_coverage + ac_index summary, no voter rows). contract is the
@@ -58,6 +58,16 @@ Usage:
         any of them has no raw file. Without it the scope is every raw file
         present in the state's raw_dir, which makes the same command mean
         different things as downloads accumulate -- see _scope_paths.
+
+        --acs also scopes the *catalog*, which is what makes it sharper than
+        it looks: each state's catalog is dropped and rewritten from that
+        run's results, never merged, and the serving app shows exactly what
+        the catalog names. So listing only the ACs being added takes every
+        other AC off the site. To extend a published state, pass every AC it
+        should serve at the patch it is already published at -- the built
+        ones are skipped rather than reparsed, so the full list re-indexes
+        cheaply. --allow-catalog-shrink is the opt-in for meaning it; see
+        _guard_catalog_shrink.
 """
 import collections
 import datetime
@@ -662,8 +672,75 @@ def _build_one_ac(task):
     }
 
 
+def _guard_catalog_shrink(catalog_path, state_id, scoped_ac_codes, allow):
+    """Refuse a build whose scope would drop ACs an existing catalog serves.
+
+    Each state's catalog is rewritten from that run's results alone -- it is
+    never merged into. So a scoped build (--acs) is not only "build these";
+    it is also "the catalog will name only these", and app.py serves exactly
+    what the catalog names, with no fallback to a lower patch. Adding new ACs
+    to a published state by listing only the new ones therefore takes every
+    other AC off the site, silently, with a build that looks entirely normal.
+
+    Stopping is the safe direction here, against the house preference for
+    degrading: the failure this prevents is invisible in the build output,
+    in the search-quality suite (which drives explicit (state, ac_code)
+    pairs) and in the freshness guards (the remaining data is perfectly
+    fresh). The escape hatch is explicit, and it names what it is dropping.
+    """
+    if not os.path.exists(catalog_path):
+        return
+    conn = sqlite3.connect(catalog_path)
+    try:
+        # Probed rather than queried blind, and the probe is deliberately the
+        # only thing swallowing an error. A catalog predating ac_index (or a
+        # file that is not a database at all) means there is nothing to
+        # protect; anything else -- a renamed column, a schema drift -- must
+        # surface, because a guard that quietly returns on a bad query is a
+        # guard that is not running. That is not hypothetical: the first cut
+        # of this asked for a state_id column on a table whose column is
+        # named `state`, and a blanket `except sqlite3.DatabaseError` turned
+        # the resulting OperationalError into a silent pass.
+        try:
+            has_index = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ac_index'"
+            ).fetchone()
+        except sqlite3.DatabaseError:
+            return
+        if not has_index:
+            return
+        served = {
+            code for (code,) in conn.execute(
+                "SELECT ac_code FROM ac_index WHERE state = ?", (state_id,)
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    dropped = sorted(served - set(scoped_ac_codes))
+    if not dropped:
+        return
+
+    shown = ", ".join(dropped[:12]) + (f" ... (+{len(dropped) - 12} more)" if len(dropped) > 12 else "")
+    message = (
+        f"{state_id}: this build's scope covers {len(scoped_ac_codes)} AC(s), but the existing "
+        f"catalog at {catalog_path} serves {len(served)}. Rewriting it would drop "
+        f"{len(dropped)}: {shown}\n"
+        f"  The catalog is written from this run's results alone -- it is not merged -- and the "
+        f"app serves exactly what it names, so those ACs would go off the air.\n"
+        f"  To extend a published state, pass EVERY AC it should serve, not just the new ones: "
+        f"already-built ACs at this patch are skipped (a COUNT(*), not a reparse), so the full "
+        f"list re-indexes rather than rebuilds.\n"
+        f"  Pass --allow-catalog-shrink if narrowing the catalog is what you actually mean."
+    )
+    if allow:
+        print(f"WARNING: {message}")
+        return
+    raise SystemExit(f"REFUSING: {message}")
+
+
 def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, workers=None,
-                 ac_codes=None):
+                 ac_codes=None, allow_catalog_shrink=False):
     """Build one small <ac_code>-<contract>.p<patch>.sqlite per (state,
     ac_code), plus one small catalog.sqlite per state -- the native per-AC
     serving artifact set (no combined DB is built or needed for this path;
@@ -709,6 +786,13 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
             sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"]))),
             ac_codes, state_id, info,
         )
+        _guard_catalog_shrink(
+            os.path.join(catalog_dir, f"{state_id}.sqlite"),
+            state_id,
+            [os.path.splitext(os.path.basename(p))[0] for p in paths],
+            allow_catalog_shrink,
+        )
+
         state_dir = os.path.join(out_dir, state_id)
         os.makedirs(state_dir, exist_ok=True)
 
@@ -819,6 +903,14 @@ if __name__ == "__main__":
         legacy_state_id = sys.argv[_i + 1]
         del sys.argv[_i:_i + 2]
 
+    # Same reason: a bare flag left in argv would shift the count-matched
+    # branches below. Only --per-ac reads it (it is the only path that
+    # rewrites a catalog), but stripping it here keeps every other branch's
+    # arity honest rather than making the flag order-sensitive.
+    allow_catalog_shrink = "--allow-catalog-shrink" in sys.argv
+    if allow_catalog_shrink:
+        sys.argv.remove("--allow-catalog-shrink")
+
     if len(sys.argv) == 4 and sys.argv[1] == "--combine":
         build_combined(sys.argv[2], sys.argv[3], state_id=legacy_state_id)
     elif "--per-ac" in sys.argv and "--states" in sys.argv:
@@ -832,7 +924,8 @@ if __name__ == "__main__":
         roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
         acs = sys.argv[sys.argv.index("--acs") + 1].split(",") if "--acs" in sys.argv else None
         build_per_ac(state_ids, out_dir, contract=contract, patch=patch,
-                     roll_year=roll_year, workers=workers, ac_codes=acs)
+                     roll_year=roll_year, workers=workers, ac_codes=acs,
+                     allow_catalog_shrink=allow_catalog_shrink)
     elif sys.argv[1:2] == ["--states"] and len(sys.argv) in (4, 6, 8):
         roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
         acs = sys.argv[sys.argv.index("--acs") + 1].split(",") if "--acs" in sys.argv else None
