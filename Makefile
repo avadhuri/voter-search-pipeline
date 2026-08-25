@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac check-servable push-ac-db-dev migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac check-servable push-ac-db-dev roll-years migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -98,14 +98,28 @@ endif
 # `make build-db STATES=karnataka,west_bengal,haryana` combines every listed
 # state's raw files into $(MULTI_DB). `make build-db` alone defaults to all
 # three live states combined.
-build-db: ## Build a SQLite DB from downloaded rolls (STATES=a,b,c; AC= for one AC)
+#
+# AC= defaults to Karnataka, whose raw is one CSV per AC directly under
+# data/raw/. STATE= builds one AC of any other state, from that state's own
+# raw_dir and file extension -- `make build-db AC=HR02 STATE=haryana`.
+AC_STATE := $(if $(STATE),$(STATE),karnataka)
+AC_RAW_DIR := $(if $(STATE),$(RAW_DIR)/$(STATE),$(RAW_DIR))
+AC_RAW_EXT := $(if $(STATE),zip,csv)
+build-db: ## Build a SQLite DB from downloaded rolls (STATES=a,b,c; AC= for one AC, +STATE= for its state)
 ifdef AC
-	$(PY) -m build_db $(RAW_DIR)/$(AC).csv $(DB_DIR)/$(AC).sqlite
+	$(PY) -m build_db $(AC_RAW_DIR)/$(AC).$(AC_RAW_EXT) $(DB_DIR)/$(AC).sqlite --state $(AC_STATE)
 else ifdef STATES
 	$(PY) -m build_db --states $(STATES) $(MULTI_DB)
 else
 	$(PY) -m build_db --states karnataka,west_bengal,haryana $(MULTI_DB)
 endif
+
+# The roll-year mapping is derived from the workbook it shipped with, not
+# hand-maintained -- `--check` in the test suite fails if the committed JSON
+# has drifted from it. See scripts/build_roll_years.py's docstring for why a
+# received .xlsx is the source of truth and the .json is what stays committed.
+roll-years: ## Regenerate states/meta/sir_source_urls/state_roll_years.json from its workbook
+	$(PY) -m build_roll_years
 
 # One-time backfill of full_name_latin/full_relative_name_latin on an
 # already-built DB (new build-db runs do this automatically). Safe to

@@ -32,6 +32,7 @@ eval = [
 py-modules = [
     "matching",
     "build_db",
+    "build_roll_years",
     "cross_reference",
     "transliteration",
     "migrate_translit",
