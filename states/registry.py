@@ -24,11 +24,18 @@ STATE_CONNECTORS = {
         "label": "West Bengal",
         "raw_dir": "data/raw/west_bengal",
         "raw_glob": "*.zip",
-        # The loaded ACs are the Latin-typeset Kolkata subset (see this
-        # module's docstring in west_bengal.py) -- the ~275 Bengali-typeset
-        # ACs aren't fetchable at all, so nothing Bengali-scripted ever
-        # reaches the DB today. "latin" reflects what's actually loaded.
-        "script": "latin",
+        # No longer only the Latin-typeset Kolkata subset: the Shree-Lipi
+        # glyph table decodes the ~265 Bengali-typeset ACs to real Bengali
+        # text, and the three page-scan ACs come back as Bengali from OCR.
+        # This flag answers one question -- "could any row in this state be
+        # non-Latin?" -- and it is now yes. Which scheme a given *string*
+        # needs is decided per string by transliteration.py's detect_scheme(),
+        # and whether a *query* needs the Latin columns at all is decided per
+        # query by is_latin_query(), so the 19 Latin-typeset Kolkata ACs are
+        # unaffected: their names hold no Indic characters, the backfill
+        # writes them through unchanged, and a Latin query still matches
+        # their raw columns directly.
+        "script": "bengali",
     },
     "haryana": {
         "connector_cls": HaryanaConnector,

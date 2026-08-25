@@ -94,8 +94,24 @@ def test_non_latin_state_ids_is_script_not_equal_latin_not_an_allow_list():
     Latin query matching nothing with nothing said about it."""
     ids = tl.non_latin_state_ids()
     assert "haryana" in ids
-    assert "karnataka" not in ids and "west_bengal" not in ids
+    assert "karnataka" not in ids
     assert tl.non_latin_state_ids(["karnataka"]) == []
+
+
+def test_west_bengal_is_non_latin():
+    """It stopped being a Latin-only state when the Shree-Lipi decoder landed
+    and the page-scan ACs started coming back from OCR -- both produce real
+    Bengali text. Without this flag the backfill never runs for West Bengal,
+    so every Bengali row's *_latin columns stay empty and a Latin-script
+    query matches none of them, with nothing said about it.
+
+    The 19 Latin-typeset Kolkata ACs are not harmed by being swept in: the
+    scheme is chosen per string, not per state, so a name holding no Indic
+    character is written through unchanged."""
+    assert "west_bengal" in tl.non_latin_state_ids()
+    assert tl.non_latin_state_ids(["west_bengal"]) == ["west_bengal"]
+    assert tl.to_latin("Sourav Ganguly") == "Sourav Ganguly"
+    assert tl.detect_scheme("\u09b0\u09ae\u09c7\u09b6") is not None
 
 
 def test_devanagari_state_ids_still_means_exactly_what_it_did():
