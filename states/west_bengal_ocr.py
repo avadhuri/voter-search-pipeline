@@ -69,9 +69,11 @@ EPIC_WHOLE = re.compile(r"^[A-Z]{3}\d{7}$")
 # One to three digits in either script -- the age column.
 AGE_SHAPE = re.compile(r"^(?:[০-৯]{1,3}|\d{1,3})$")
 
-# How much of a word's own height two words may differ by and still count as
-# the same row. Generous because a scan's baseline wanders.
-ROW_TOLERANCE = 0.6
+# Fraction of a word's own height that its baseline may sit away from the
+# word the row currently ends at. Swept against three real parts: 0.6 leaves
+# a skewed row's right-hand cells behind, and past ~1.2 rows start swallowing
+# their neighbours (the recovered row count falls). 1.0 is the knee.
+ROW_TOLERANCE = 1.0
 
 
 def _words(response: dict) -> list[dict]:
@@ -111,20 +113,57 @@ def _words(response: dict) -> list[dict]:
 
 
 def group_rows(words: list[dict]) -> list[list[dict]]:
-    """Words clustered into visual rows, each left-to-right."""
-    rows: list[dict] = []
-    for word in sorted(words, key=lambda w: w["cy"]):
+    """Words clustered into visual rows, each left-to-right.
+
+    Rows are built by walking left to right and extending each one from the
+    word it currently ends at, rather than by clustering every word against a
+    single y for the whole row. These pages are *scans* and they are skewed:
+    a row's baseline drifts steadily as it crosses the page, so on AC294 the
+    age and EPIC columns sit far enough below the name column that a
+    fixed-y test files them as a separate row -- which then parses as a
+    non-row and is dropped, taking that elector's age and EPIC with it. It
+    read as a dead column and was in fact a lost half-row. Chaining from the
+    last word absorbs the drift, because between two horizontally adjacent
+    words it is small even when it is large across the whole page.
+
+    Measured over five pages per part, against the same cached Vision
+    responses (percent of rows on which the cell was recovered, sex/age/EPIC):
+
+        AC287   96.1 / 97.4 / 82.5  ->  96.1 / 96.5 / 81.6
+        AC291   73.4 / 64.2 / 61.3  ->  86.7 / 87.8 / 79.4
+        AC294   52.0 / 37.9 / 39.5  ->  55.1 / 73.6 / 78.1
+
+    AC287 is the least skewed of the three, which is why nothing looked
+    wrong until AC294 was OCR'd; it is flat within noise either way. Its
+    sex column is *not* evidence about grouping at all -- the 96 vs the 67
+    an earlier pass reported there was the Vision endpoint (files:annotate
+    rasterizes these PDFs materially better than asyncBatchAnnotate does on
+    identical bytes), a separate finding that had to be held fixed before
+    any of the above could be attributed to the grouper.
+    """
+    rows: list[list[dict]] = []
+    for word in sorted(words, key=lambda w: (w["x0"], w["cy"])):
         height = max(word["y1"] - word["y0"], 1e-6)
-        for row in reversed(rows):
-            if abs(row["cy"] - word["cy"]) < ROW_TOLERANCE * height:
-                row["words"].append(word)
-                row["cy"] = sum(w["cy"] for w in row["words"]) / len(row["words"])
-                break
+        best: list[dict] | None = None
+        best_gap = None
+        for row in rows:
+            # Only ever extend a row rightwards: a word that starts back
+            # inside what a row already covers belongs to a different one,
+            # however close its baseline sits.
+            if row[-1]["x1"] > word["x1"]:
+                continue
+            gap = abs(row[-1]["cy"] - word["cy"])
+            if gap < ROW_TOLERANCE * height and (best_gap is None or gap < best_gap):
+                best, best_gap = row, gap
+        if best is None:
+            rows.append([word])
         else:
-            rows.append({"cy": word["cy"], "words": [word]})
+            best.append(word)
     for row in rows:
-        row["words"].sort(key=lambda w: w["x0"])
-    return [r["words"] for r in sorted(rows, key=lambda r: r["cy"])]
+        row.sort(key=lambda w: w["x0"])
+    # Ordered by where each row *starts*, which on a skewed page is the only
+    # y that hasn't drifted yet.
+    return sorted(rows, key=lambda r: r[0]["cy"])
 
 
 def bengali_int(token: str) -> int | None:

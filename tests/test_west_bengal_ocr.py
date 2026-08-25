@@ -33,7 +33,7 @@ def _word(text, x, y):
     }
 
 
-def _page(rows, column_order=True):
+def _page(rows, column_order=True, skew=0.0):
     """A response whose words are emitted the way Vision actually emits them.
 
     Reading order on these pages runs down the columns, so by default the
@@ -45,7 +45,9 @@ def _page(rows, column_order=True):
     for r, tokens in enumerate(rows):
         x = 40.0
         for c, token in enumerate(tokens):
-            placed.append((c, _word(token, x, 100.0 + r * 3 * ROW_H)))
+            # `skew` drops each word by that fraction of its x -- the linear
+            # baseline drift a scan on a tilted page actually has.
+            placed.append((c, _word(token, x, 100.0 + r * 3 * ROW_H + skew * x)))
             x += 8.0 * len(token) + 12.0
     if column_order:
         placed.sort(key=lambda p: p[0])
@@ -211,3 +213,51 @@ def test_no_age_is_stored_from_a_scanned_roll_however_clean_it_reads():
     assert row["remark"] == ""
     # The token is still located, or it would land in the relative's name.
     assert row["full_relative_name"] == "হরি মণ্ডল"
+
+
+SKEWED_ROW = ["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫", "WBA1234567"]
+
+
+def test_a_skewed_row_stays_one_row():
+    """The regression that made a column look dead.
+
+    These pages are scans and they are tilted, so a row's baseline drifts as
+    it crosses the page -- on AC294 far enough that the sex, age and EPIC
+    cells sit a full row-height below the name. Grouping every word against
+    one y for the whole row filed that half as a separate row, which then
+    parsed as a non-row and was dropped, taking the elector's age and EPIC
+    with it. It read as a dead column (both recovered on 3.5% of rows) and
+    was a lost half-row: measured over five pages, chaining each row from the
+    word it currently ends at took AC294's age from 37.9% to 73.6% and its
+    EPIC from 39.5% to 78.1%, and AC291's sex from 73.4% to 86.7%.
+    """
+    total_drift = 0.11 * (40.0 + sum(8.0 * len(t) + 12.0 for t in SKEWED_ROW))
+    assert total_drift > ROW_H, "fixture must actually drift a full row"
+
+    rows = parse_page(_page([SKEWED_ROW], skew=0.11))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["serial_no"] == 1
+    assert row["full_name"] == "রমেশ মণ্ডল"
+    assert row["gender"] == "M"
+    assert row["local_ref"] == "WBA1234567"
+    assert row["remark"] == ""
+
+
+def test_an_unskewed_page_is_unaffected():
+    """The fix must not be a trade: AC287, the least skewed of the three
+    parts, is why nothing looked wrong for weeks."""
+    rows = parse_page(_page([SKEWED_ROW, SKEWED_ROW]))
+    assert len(rows) == 2
+    assert all(r["local_ref"] == "WBA1234567" and r["remark"] == "" for r in rows)
+
+
+def test_a_word_never_joins_a_row_that_already_covers_it():
+    """Two rows whose baselines are close enough to attract each other still
+    stay apart, because a row only ever extends rightwards. Without that
+    guard a chained grouper merges a whole column into one row."""
+    page = _page([["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং"],
+                  ["২", "সীতা", "মণ্ডল", "স্বামী", "রমেশ", "মণ্ডল", "স্ত্রী"]])
+    rows = parse_page(page)
+    assert [r["serial_no"] for r in rows] == [1, 2]
+    assert [r["full_name"] for r in rows] == ["রমেশ মণ্ডল", "সীতা মণ্ডল"]
