@@ -129,17 +129,24 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 
 # `make build-db-ac STATES=haryana` builds just Haryana's per-AC files;
 # `make build-db-ac` alone defaults to all three live states. Always
-# contract=c1, patch=0 today -- there's no PATCH= override yet, so
-# rebuilding an AC that was already pushed overwrites that same p0 file
-# in place rather than publishing a new patch revision alongside it. Fine
-# for the current single-collaborator, small-scale workflow; revisit if
-# that ever needs to change (e.g. republishing needs an old patch kept
-# live for in-flight requests). WORKERS=N caps the process pool build_db.py
+# contract=c1. PATCH=N picks the content revision (default 0, matching a
+# state's first build); build_db.py has always taken --patch, but this
+# target didn't pass it, and that gap cost real work: the live catalogs
+# are at p1, built by someone reaching past `make` to call build_db.py
+# with --patch 1 by hand. The Makefile therefore went on saying "patch=0
+# today" while production served p1, and a rebuild driven through this
+# target would have produced a full set of p0 files that the app never
+# fetches -- the catalog names the exact patch and does not fall back to
+# a lower one. Rebuilding a state that is already published wants
+# PATCH=<current+1>: it publishes the new revision alongside the old
+# rather than overwriting it, so the previous files stay on disk and in
+# the bucket as a rollback until the catalog (phase 2 of the push) moves
+# the pointer. WORKERS=N caps the process pool build_db.py
 # fans per-AC parsing out across (default: cpu_count - 1); an interrupted
 # run is safe to just re-run -- already-finalized AC files are skipped, not
 # rebuilt.
-build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (STATES=a,b,c, default karnataka,west_bengal,haryana; WORKERS=n)
-	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(AC_DB_LOCAL_DIR) $(if $(WORKERS),--workers $(WORKERS),)
+build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; PATCH=n revision; OUT=dir; WORKERS=n)
+	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(if $(OUT),$(OUT),$(AC_DB_LOCAL_DIR)) $(if $(PATCH),--patch $(PATCH),) $(if $(WORKERS),--workers $(WORKERS),)
 
 # The gate between "it built" and "it can be served". Every check it runs is
 # for something that produces a completely normal-looking build -- right row
