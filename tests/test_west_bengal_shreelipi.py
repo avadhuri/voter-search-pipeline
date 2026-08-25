@@ -116,6 +116,23 @@ PAIRS = [
     ("a694c1d4", "শর্মা"),                # n=13    was শমার্
     ("94c62dc13fc4d4", "মুখার্জী"),        # n=4     was মুখাজীর্
     ("65c1afcf859ac12ec4", "দাসবৈরাগী"),   # n=396   was দাসবরাগী (207 unmapped)
+
+    # A second sample, 6 North Bengal ACs x 8 parts, taken to chase the four
+    # highest-frequency ids still being reported. Three turned out to be
+    # conjuncts and are read off Latin-origin names the roll spells
+    # phonetically -- Francis, Victor, Brahmachari -- which pin the letters
+    # far harder than a Bengali word would, having only one possible reading.
+    ("83d982c1c272af", "ফ্রান্সিস"),        # n=11    was ফ্রাসি   (114 unmapped)
+    ("9bcd9a72", "লরেন্স"),                # n=2     was লরে      (114 unmapped)
+    ("94c672c4", "মুন্সী"),                # n=2     was মুী      (114 unmapped)
+    ("c28f82269a", "ভিক্টর"),              # n=8     was ভির      (38 unmapped)
+    ("c28f82cd26c1c29abbc1", "ভিক্টোরিয়া"), # n=3     was ভিােরিয়া (38 unmapped)
+    ("85d9b6823a82c19ac4", "ব্রহ্মচারী"),   # n=2     was ব্রচারী   (182 unmapped)
+    ("85d9b6826fc19ac1bb6f", "ব্রহ্মনারায়ন"),# n=2    was ব্রনারায়ন (182 unmapped)
+    # 223 is the fourth. Note the `was` column: the spelling was already
+    # right, so what it cost was the damage remark, not the name.
+    ("85b9dfc6bbc1", "বড়ুয়া"),           # n=4     was বড়ুয়া   (223 unmapped)
+    ("4682b9dfc6", "ঝড়ু"),                # n=13    was ঝড়ু     (223 unmapped)
 ]
 
 # Page-1 headings, truncated. AC001 is SHREE550; AC022 (Kalimpong) is one of
@@ -217,6 +234,41 @@ def test_the_glyphs_added_for_names_are_all_reachable():
     assert decode(_pua("b4"))[0] == "স"
     assert decode(_pua("56b4"))[0] == "ন্স"          # 86 is a half form
     assert decode(_pua("cf85"))[0] == "বৈ"           # 207 is pre-base
+
+def test_the_three_conjuncts_read_off_latin_origin_names():
+    """ক্ট, ন্স and হ্ম were each absent from the table, so every name needing
+    one lost a whole syllable -- Victor decoded as ভির, Francis as ফ্রাসি.
+
+    The evidence is the names themselves: these are transliterations of
+    Victor/Victoria/Benedict, Francis/Lawrence/Florence/Munshi and
+    Brahmachari/Brahmananda, which admit exactly one Bengali spelling each. A
+    second, independent check is where the ids sit -- 38 among ক্ক/ক্ম/ক্স, 114
+    among ন্ন/ন্ড, 182 between হ and হু -- i.e. each falls inside the varga
+    block its reading belongs to."""
+    for gid in (38, 114, 182):
+        assert gid in sl.KNOWN_GIDS, gid
+    assert decode(_pua("26"))[0] == "ক" + sl.HASANT + "ট"
+    assert decode(_pua("72"))[0] == "ন" + sl.HASANT + "স"
+    assert decode(_pua("b6"))[0] == "হ" + sl.HASANT + "ম"
+    # 114 is a single glyph for the same cluster 86+180 spells as two.
+    assert decode(_pua("72"))[0] == decode(_pua("56b4"))[0]
+
+
+def test_the_du_connector_is_silence_not_a_missing_letter():
+    """223 is only ever drawn between ড়/ঢ় and a following ু/ূ -- the u-matra
+    cannot sit under the nukta, so the font draws a connector for it. Dropping
+    it was always right; reporting it was not, and that report was the single
+    largest source of damage remarks in the state."""
+    assert 223 in sl.IGNORE_GIDS
+    for hexstr, expected in (("4682c1b9dfc6", "ঝাড়ু"), ("2dc1b9dfc6bbc1", "খাড়ুয়া"),
+                             ("05c1a9c1badfc6", "আষাঢ়ু"), ("6fc1b9dfc6", "নাড়ু")):
+        text, unknown = decode(_pua(hexstr))
+        assert text == expected
+        assert unknown == []
+    # Dropping it is not the same as it being absent: the ড় and the ু are both
+    # still real glyphs either side of it.
+    assert decode(_pua("b9c6"))[0] == "ড়ু"
+
 
 def test_unknown_glyphs_are_reported_not_silently_dropped():
     """A hole has to be visible. A missing letter is a bug report; a guessed

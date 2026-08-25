@@ -101,11 +101,29 @@ states/haryana_dkraj.py. A hole that shows up as a missing letter is a bug
 report; a hole filled with a guess is a corrupted name that still searches,
 still ranks, and passes every quality assertion we have.
 
-Two are known-open rather than merely absent, both left alone for want of
-evidence: gid 223 (671 rows) appears only as খাকড়⟦223⟧ু / ছেছড়⟦223⟧ু /
-ঝড়⟦223⟧ু, which reads like a third hook in the 220/222 family rather than a
-letter; gid 182 (221 rows) has one legible witness, ব্র⟦182⟧দেব, suggesting
-হ্ম. Neither is worth guessing at that sample size.
+The way out of a hole is a wider sample, not a better guess. The four ids
+that were still reported most often -- 114, 38, 182, 223 -- were resolved by
+printing every name they occur in across six North Bengal ACs and reading the
+names, and all four turned out to be legible once there were enough of them:
+
+    114  ন্স   ফ্রান্সিস, লরেন্স, ফ্লোরেন্স, মুন্সী, আলফন্স, কন্সটান্টিউস
+     38  ক্ট   ভিক্টর, ভিক্টোরিয়া, বেনেডিক্ট
+    182  হ্ম   ব্রহ্মচারী, ব্রহ্মানন্দ, ব্রহ্মপ্রকাশ, ব্রহ্মনারায়ণ, ব্রহ্মদেব
+    223  --    see IGNORE_GIDS: a connector, not a letter
+
+Three of those four are read off names of Latin origin, which the roll spells
+phonetically -- Victor, Francis, Benedict, Florence -- and which therefore
+admit exactly one Bengali spelling apiece. That is stronger evidence than a
+Bengali word gives, and it is why the earlier single ব্র⟦182⟧দেব witness was
+correctly left alone: one witness is a guess, nine are a reading. Each id also
+falls inside the varga block its reading belongs to (38 among ক্ক/ক্ম/ক্স, 114
+among ন্ন/ন্ড, 182 between হ and হু), which is corroboration, not the evidence.
+
+Measured over the first 32 ACs built (4.8M electors): those four were 13,260
+of 18,015 reported glyph hits, i.e. three quarters of all the damage in the
+state. What is left is a tail of 46 ids over 4,755 hits, the largest of them
+499 -- worth another pass with the same method if anyone wants it, but no
+longer the thing standing between this font and a searchable West Bengal.
 
 NOT COVERED BY THIS MODULE
 --------------------------
@@ -152,7 +170,14 @@ SPACE_GIDS = {3, 224}
 # consonants. Established empirically -- it appears between a consonant and its
 # matra in words whose correct spelling has nothing there (তালিকা, ভা, ক্ষেত্র),
 # and never where a letter is actually missing.
-IGNORE_GIDS = {130}
+#
+# 223 is the same thing in one narrow place: it is only ever emitted between
+# ড়/ঢ় (185/186) and a following ু/ূ, because the u-matra cannot hang under the
+# nukta and needs a connector drawn for it. Every word it appears in is already
+# spelled correctly with it dropped -- বড়ুয়া, ঝাড়ু, নাড়ু, পাঁড়ু, খাড়ুয়া,
+# আষাঢ়ু -- so it is silence, not a hole. It is listed here rather than left
+# unmapped so it stops reporting 2.6k rows per 2.4M as damaged.
+IGNORE_GIDS = {130, 223}
 
 # Hooks, not characters. See property 4 in the module docstring.
 KA_HOOK_GIDS = {220}             # ত-conjunct -> ক-conjunct
@@ -215,6 +240,7 @@ GID_MAP = {
     # ka-varga
     36: "ক",
     37: "ক" + HASANT + "ক",
+    38: "ক" + HASANT + "ট",                    # ভিক্টর, ভিক্টোরিয়া, বেনেডিক্ট
     41: "ক" + HASANT + "ম",
     42: "ক" + HASANT + "স",
     45: "খ",
@@ -267,6 +293,7 @@ GID_MAP = {
     109: "ধ",
     111: "ন", 119: "ন", 120: "ন", 121: "ন",
     113: "ন" + HASANT + "ন",
+    114: "ন" + HASANT + "স",                    # ফ্রান্সিস, লরেন্স, ফ্লোরেন্স, মুন্সী
     117: "ন" + HASANT + "ড",
     123: "ন" + HASANT + "দ" + HASANT + "র",
 
@@ -300,6 +327,7 @@ GID_MAP = {
     177: "স" + HASANT + "ট",
     179: "হ",
     180: "স",                                 # another স variant: প্রসাদ, আসাদী
+    182: "হ" + HASANT + "ম",                   # ব্রহ্মচারী, ব্রহ্মানন্দ, ব্রহ্মদেব
     184: "হু",                                 # (হুগলী)
     185: "ড়", 186: "ঢ়", 187: "য়",
     188: "ক" + HASANT + "ষ",
