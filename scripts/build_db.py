@@ -61,7 +61,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from states.karnataka import KarnatakaConnector
 from states.registry import STATE_CONNECTORS
 from states.roll_years import resolve_roll_year, roll_year_for
 from states.source_urls import resolve_source_url
@@ -189,10 +188,28 @@ INSERT OR IGNORE INTO catalog_locality (state, ac_code, locality) VALUES (?,?,?)
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
 
 
+# build_single() and build_combined() predate the state registry: they take a
+# raw path rather than a state, so there is nothing in their arguments that
+# says which state's connector, meta, roll year and ECI code to use. They have
+# always been Karnataka's, and the Makefile's `build-db AC=` and
+# `build-db --combine` still reach them. Naming that once beats repeating the
+# literal at each of the five places that need it -- and makes the actual
+# limitation greppable, rather than looking like five independent decisions to
+# special-case one state in a multi-state builder. Anything new should use
+# build_multi_state/build_per_ac, which take state_ids and hardcode nothing.
+LEGACY_STATE_ID = "karnataka"
+
+
+def _legacy_connector():
+    """The legacy paths' connector, via the registry rather than a direct
+    import, so LEGACY_STATE_ID is the single thing that decides."""
+    return STATE_CONNECTORS[LEGACY_STATE_ID]["connector_cls"]()
+
+
 def _load_ac_lookup():
     """ac_code -> Constituency, from states/meta/ac_meta.json (via the connector's
     own loader, so this and list_constituencies() can't drift)."""
-    return _ac_lookup(KarnatakaConnector(), "karnataka")
+    return _ac_lookup(_legacy_connector(), LEGACY_STATE_ID)
 
 
 class UnknownConstituencyError(ValueError):
@@ -335,13 +352,17 @@ def _finalize_voters_only(conn):
 def build_single(raw_csv_path, db_path, roll_year=None):
     """Build a DB from one AC's raw CSV, inferring ac_code from the filename.
 
-    Karnataka-only, same as build_combined -- see its docstring for why the
-    year is resolved rather than hardcoded here.
+    A LEGACY_STATE_ID path -- see that constant for why one state is named
+    at all here. The roll year is resolved from it rather than written down
+    again, so there stays exactly one place in the repo that says what
+    Karnataka's year is.
     """
-    roll_year = roll_year if roll_year is not None else resolve_roll_year("karnataka")
+    roll_year = (
+        roll_year if roll_year is not None else resolve_roll_year(LEGACY_STATE_ID)
+    )
     ac_code = os.path.splitext(os.path.basename(raw_csv_path))[0]
-    connector = KarnatakaConnector()
-    ac = _resolve_ac(ac_code, _load_ac_lookup(), "karnataka")
+    connector = _legacy_connector()
+    ac = _resolve_ac(ac_code, _load_ac_lookup(), LEGACY_STATE_ID)
 
     with open(raw_csv_path, "rb") as f:
         raw = f.read()
@@ -361,12 +382,13 @@ def build_single(raw_csv_path, db_path, roll_year=None):
 def build_combined(raw_dir, db_path, roll_year=None):
     """Build one DB from every <AC_CODE>.csv file in raw_dir.
 
-    Karnataka-only legacy path, so the roll year is Karnataka's --
-    resolved rather than written down again, so there stays exactly one
-    place in the repo that says which year that is.
+    A LEGACY_STATE_ID path -- see that constant for why one state is named
+    at all here, and build_single's docstring for the roll year.
     """
-    roll_year = roll_year if roll_year is not None else resolve_roll_year("karnataka")
-    connector = KarnatakaConnector()
+    roll_year = (
+        roll_year if roll_year is not None else resolve_roll_year(LEGACY_STATE_ID)
+    )
+    connector = _legacy_connector()
     ac_lookup = _load_ac_lookup()
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
@@ -375,7 +397,7 @@ def build_combined(raw_dir, db_path, roll_year=None):
     total = 0
     for path in csv_paths:
         ac_code = os.path.splitext(os.path.basename(path))[0]
-        ac = _resolve_ac(ac_code, ac_lookup, "karnataka")
+        ac = _resolve_ac(ac_code, ac_lookup, LEGACY_STATE_ID)
         with open(path, "rb") as f:
             raw = f.read()
         records = connector.parse_raw(raw, ac, roll_year)
