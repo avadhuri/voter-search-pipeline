@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac check-servable push-ac-db-dev roll-years migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac check-servable sample-names push-ac-db-dev roll-years migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -155,6 +155,10 @@ build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (S
 check-servable: ## Check built data is actually servable (PATH_= to override, STATE=a,b)
 	@test "$(CHECK)" != "0" || { echo "check-servable skipped (CHECK=0)"; exit 0; }; \
 	$(PY) -m check_servable $(if $(PATH_),$(PATH_),$(AC_DB_LOCAL_DIR)) $(if $(STATE),--state $(STATE),)
+
+sample-names: ## Print N native names beside their romanization, per state, to eyeball (N=, STATE=a,b, PATH_=)
+	$(PY) -m check_servable $(if $(PATH_),$(PATH_),$(AC_DB_LOCAL_DIR)) \
+		$(if $(STATE),--state $(STATE),) --sample-names $(if $(N),$(N),)
 
 # Gated on check-servable, deliberately: the failure this prevents is a push
 # of data that builds and searches perfectly while being wrong or unreachable
