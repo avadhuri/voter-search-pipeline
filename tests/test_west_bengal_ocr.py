@@ -6,13 +6,23 @@ and a synthetic page lets a test state the geometry it is exercising instead
 of hoping a real scan happens to contain it. The real responses are 100 MB of
 GCS output and aren't committed.
 """
+import gzip
+import json
+import os
+
 import pytest
 
 from states.west_bengal_ocr import (
+    PAGES_MANIFEST,
     bengali_int,
     group_rows,
+    ocr_gaps,
+    page_failures,
+    pages_covered,
     parse_page,
+    parse_part,
     parse_row,
+    window_paths,
 )
 
 PAGE_W, PAGE_H = 1000.0, 1400.0
@@ -261,3 +271,149 @@ def test_a_word_never_joins_a_row_that_already_covers_it():
     rows = parse_page(page)
     assert [r["serial_no"] for r in rows] == [1, 2]
     assert [r["full_name"] for r in rows] == ["রমেশ মণ্ডল", "সীতা মণ্ডল"]
+
+
+# --------------------------------------------------------------------------
+# the response tree on disk
+# --------------------------------------------------------------------------
+
+ROW = ["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫", "WBA1234567"]
+
+
+def _write_window(part_dir, first, last, rows_per_page, gzipped=True):
+    """One response file covering pages `first`..`last`, named the way
+    scripts/ocr_vision.py names them."""
+    part_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"responses": [_page(rows_per_page)
+                             for _ in range(first, last + 1)]}
+    name = f"p{first:04d}-{last:04d}.json" + (".gz" if gzipped else "")
+    path = part_dir / name
+    opener = gzip.open if gzipped else open
+    with opener(path, "wt", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+    return path
+
+
+def _ac_tree(tmp_path, counts):
+    """An AC's OCR directory with a pages.json manifest, nothing OCR'd yet."""
+    ac_dir = tmp_path / "AC287"
+    ac_dir.mkdir(parents=True, exist_ok=True)
+    (ac_dir / PAGES_MANIFEST).write_text(json.dumps(counts), encoding="utf-8")
+    return ac_dir
+
+
+def test_both_response_suffixes_are_read_and_come_back_in_page_order(tmp_path):
+    # The first parts OCR'd landed before the responses were gzipped, so a
+    # part can hold either suffix -- and the second window must not sort
+    # ahead of the first just because ".gz" is longer than ".json".
+    part = tmp_path / "part0001"
+    _write_window(part, 6, 10, [ROW], gzipped=False)
+    _write_window(part, 1, 5, [ROW], gzipped=True)
+    assert [os.path.basename(p) for p in window_paths(part)] == [
+        "p0001-0005.json.gz", "p0006-0010.json"
+    ]
+    assert pages_covered(part) == set(range(1, 11))
+
+
+def test_a_file_that_is_not_a_response_window_is_not_counted(tmp_path):
+    # pages.json lives in the AC directory, but a stray note or a partial
+    # download landing in a part directory must not read as coverage.
+    part = tmp_path / "part0001"
+    _write_window(part, 1, 5, [ROW])
+    (part / "notes.txt").write_text("x", encoding="utf-8")
+    (part / "p0006-0010.json.tmp").write_text("{}", encoding="utf-8")
+    assert pages_covered(part) == set(range(1, 6))
+
+
+def test_an_ac_is_gapless_only_when_every_page_of_every_part_is_present(tmp_path):
+    ac_dir = _ac_tree(tmp_path, {"part0001": 7, "part0002": 5})
+    _write_window(ac_dir / "part0001", 1, 5, [ROW])
+    _write_window(ac_dir / "part0002", 1, 5, [ROW])
+    # part0001 is two pages short: the run is still going, or was killed.
+    gaps = ocr_gaps(ac_dir, ["part0001", "part0002"])
+    assert len(gaps) == 1
+    assert "part0001" in gaps[0] and "2 of 7" in gaps[0]
+
+    _write_window(ac_dir / "part0001", 6, 7, [ROW])
+    assert ocr_gaps(ac_dir, ["part0001", "part0002"]) == []
+
+
+def test_a_part_the_manifest_never_listed_is_a_gap_too(tmp_path):
+    # The expected part list comes from the raw zip's own members, so a
+    # manifest that is itself short cannot make an AC look complete.
+    ac_dir = _ac_tree(tmp_path, {"part0001": 5})
+    _write_window(ac_dir / "part0001", 1, 5, [ROW])
+    gaps = ocr_gaps(ac_dir, ["part0001", "part0002"])
+    assert len(gaps) == 1 and "part0002" in gaps[0]
+
+
+def test_a_missing_manifest_is_a_gap_rather_than_a_pass(tmp_path):
+    ac_dir = tmp_path / "AC287"
+    _write_window(ac_dir / "part0001", 1, 5, [ROW])
+    assert ocr_gaps(ac_dir, ["part0001"]) == [f"no {PAGES_MANIFEST} in {ac_dir}"]
+
+
+def test_parse_part_returns_every_page_of_every_window(tmp_path):
+    part = tmp_path / "part0001"
+    _write_window(part, 1, 5, [ROW, ROW])
+    _write_window(part, 6, 6, [ROW])
+    rows = parse_part(part)
+    assert len(rows) == 11              # 5 pages x 2 rows, then 1 page x 1
+    assert {r["full_name"] for r in rows} == {"রমেশ মণ্ডল"}
+
+
+def test_an_unread_name_names_itself_so_it_can_be_counted(tmp_path):
+    # A row with no name is one no query can reach. Every other column can be
+    # recovered from the source document later; this one has to be countable.
+    row = parse_row(["১", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫", "WBA1234567"])
+    assert row["full_name"] == ""
+    assert "name not read" in row["remark"]
+
+    row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "পুং", "৩৫", "WBA1234567"])
+    assert row["full_relative_name"] == ""
+    assert "relative's name not read" in row["remark"]
+
+
+def _write_error_window(part_dir, first, last, message):
+    """A window whose pages Vision answered for but could not read -- the
+    shape a per-page failure actually lands in, an `error` object where the
+    `fullTextAnnotation` would be."""
+    part_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"responses": [{"error": {"code": 3, "message": message}}
+                             for _ in range(first, last + 1)]}
+    path = part_dir / f"p{first:04d}-{last:04d}.json.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+    return path
+
+
+def test_a_page_vision_could_not_read_is_named_with_its_reason(tmp_path):
+    part = tmp_path / "part0001"
+    _write_window(part, 1, 5, [ROW])
+    _write_error_window(part, 6, 10, "Bad image data.")
+    assert page_failures(part) == [(p, "Bad image data.") for p in range(6, 11)]
+
+
+def test_a_page_read_and_found_blank_is_not_a_failure(tmp_path):
+    # Every part of these ACs ends on a blank sheet and most carry a blank
+    # verso behind the cover. Vision answers for them with neither an error
+    # nor a fullTextAnnotation, and counting those as damage would report
+    # two unreadable pages in every part of every AC.
+    part = tmp_path / "part0001"
+    _write_window(part, 1, 5, [ROW])
+    with gzip.open(part / "p0006-0010.json.gz", "wt", encoding="utf-8") as fh:
+        json.dump({"responses": [{} for _ in range(5)]}, fh)
+    assert page_failures(part) == []
+    assert pages_covered(part) == set(range(1, 11))
+
+
+def test_an_unreadable_page_still_counts_as_covered(tmp_path):
+    # ocr_gaps() asks whether the *run* finished, and it did: Vision was
+    # asked about these pages and answered. Re-running would not change the
+    # answer, so this must not read as an unfinished run -- the two are
+    # deliberately separate signals with separate remedies.
+    ac_dir = _ac_tree(tmp_path, {"part0001": 5})
+    _write_error_window(ac_dir / "part0001", 1, 5, "Bad image data.")
+    assert ocr_gaps(ac_dir, ["part0001"]) == []
+    assert len(page_failures(ac_dir / "part0001")) == 5
+    assert parse_part(ac_dir / "part0001") == []

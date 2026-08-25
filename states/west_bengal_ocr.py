@@ -47,6 +47,9 @@ relative's name may carry the leftovers.
 """
 from __future__ import annotations
 
+import gzip
+import json
+import os
 import re
 
 BN_DIGITS = "০১২৩৪৫৬৭৮৯"
@@ -267,11 +270,22 @@ def parse_row(tokens: list[str]) -> dict | None:
         # distinguishes an empty cell from one it failed to read.
         remarks.append("EPIC no not read")
 
+    # The two searched fields say so when they came back empty. Every other
+    # column can be reconstructed from the source document later; a row with
+    # no name is one no query can ever reach, and the remark is the only
+    # thing that makes those countable instead of merely absent.
+    full_name = " ".join(tokens[name_from:r])
+    full_relative_name = " ".join(tail)
+    if not full_name:
+        remarks.append("name not read")
+    if not full_relative_name:
+        remarks.append("relative's name not read")
+
     return {
         "serial_no": serial,
-        "full_name": " ".join(tokens[name_from:r]),
+        "full_name": full_name,
         "relation_code": RELATION_WORDS[tokens[r]],
-        "full_relative_name": " ".join(tail),
+        "full_relative_name": full_relative_name,
         "gender": gender,
         "age": age,
         "local_ref": epic,
@@ -295,3 +309,135 @@ def parse_response_file(payload: dict) -> list[dict]:
     for response in payload.get("responses", []):
         out.extend(parse_page(response))
     return out
+
+
+# --------------------------------------------------------------------------
+# the response tree on disk
+# --------------------------------------------------------------------------
+#
+# scripts/ocr_vision.py lands one directory per AC beside that state's raw
+# zips, one sub-directory per part, and one file per five-page request
+# window:
+#
+#     data/raw/west_bengal/ocr/AC287/pages.json
+#     data/raw/west_bengal/ocr/AC287/part0001/p0001-0005.json.gz
+#     data/raw/west_bengal/ocr/AC287/part0001/p0006-0010.json.gz
+#
+# The part directory names are the zip's own PDF stems, so `part0001` here is
+# `part0001.pdf` in AC287.zip, which the downloader named from the CEO site's
+# part index -- that is what makes part_no recoverable from a directory name
+# and, through it, source_url resolvable per part.
+
+OCR_SUBDIR = "ocr"
+PAGES_MANIFEST = "pages.json"
+
+# Both suffixes: the first parts OCR'd landed before the responses were
+# gzipped, and re-OCRing them to change a filename would be paying twice for
+# bytes already on disk.
+WINDOW_NAME = re.compile(r"^p(\d{4})-(\d{4})\.json(?:\.gz)?$")
+
+
+def window_paths(part_dir) -> list[str]:
+    """Every response window for one part, in page order."""
+    if not os.path.isdir(part_dir):
+        return []
+    return sorted(
+        (os.path.join(part_dir, n) for n in os.listdir(part_dir)
+         if WINDOW_NAME.match(n)),
+        key=os.path.basename,
+    )
+
+
+def load_window(path) -> dict:
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def pages_covered(part_dir) -> set:
+    """The page numbers this part has a response for.
+
+    Read off the window filenames rather than by opening them: a completeness
+    check that costs a directory listing can run over 583 parts on every
+    build, and the name is written by the same code that writes the file.
+    """
+    covered = set()
+    for path in window_paths(part_dir):
+        m = WINDOW_NAME.match(os.path.basename(path))
+        covered.update(range(int(m.group(1)), int(m.group(2)) + 1))
+    return covered
+
+
+def load_page_counts(ac_dir):
+    """{part stem: page count} for one AC, or None if the manifest is absent.
+
+    scripts/ocr_vision.py counts every part's pages up front and writes this
+    file in one go, so it is complete or missing -- never half-written. That
+    is what makes it usable as the denominator below.
+    """
+    path = os.path.join(ac_dir, PAGES_MANIFEST)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def ocr_gaps(ac_dir, part_stems) -> list[str]:
+    """Every expected part whose OCR output is missing or short, described.
+
+    Empty means this AC is completely OCR'd and safe to build. The caller
+    (states/west_bengal.py) refuses to build an AC with any gap rather than
+    publishing the parts it happens to have, because a half-OCR'd AC is
+    invisible downstream: every row in it parses, scores and ranks correctly,
+    the build log is clean, and the only symptom is electors who are simply
+    not there. That is the same failure class as the catalog-shrink guard in
+    build_db.py, and it wants the same answer -- stop, and name what is
+    missing.
+
+    `part_stems` comes from the raw zip's own members, not from the manifest,
+    so a manifest that is itself short is caught too.
+    """
+    counts = load_page_counts(ac_dir)
+    if counts is None:
+        return [f"no {PAGES_MANIFEST} in {ac_dir}"]
+
+    gaps = []
+    for stem in part_stems:
+        total = counts.get(stem)
+        if total is None:
+            gaps.append(f"{stem}: not listed in {PAGES_MANIFEST}")
+            continue
+        missing = sorted(set(range(1, total + 1)) - pages_covered(os.path.join(ac_dir, stem)))
+        if missing:
+            gaps.append(
+                f"{stem}: {len(missing)} of {total} page(s) have no OCR response "
+                f"(first missing: p{missing[0]})"
+            )
+    return gaps
+
+
+# Vision answers per page, so one unreadable page inside an otherwise fine
+# window comes back as a response object carrying `error` instead of
+# `fullTextAnnotation`. Two other shapes look similar and are not this:
+# a page it read and found no text on (a blank verso, or a part's blank
+# last sheet -- checked by eye on AC291 part0005 pages 2 and 16, which are
+# bare paper with bleed-through from the reverse), and a page with no
+# response file at all, which is ocr_gaps()' business above.
+def page_failures(part_dir) -> list:
+    """[(page number, Vision's message)] for every page it could not read."""
+    failures = []
+    for path in window_paths(part_dir):
+        first = int(WINDOW_NAME.match(os.path.basename(path)).group(1))
+        for offset, response in enumerate(load_window(path).get("responses", [])):
+            error = response.get("error")
+            if error:
+                failures.append((first + offset, error.get("message", "unknown")))
+    return failures
+
+
+def parse_part(part_dir) -> list[dict]:
+    """Every voter row in one part, in page order."""
+    rows = []
+    for path in window_paths(part_dir):
+        rows.extend(parse_response_file(load_window(path)))
+    return rows

@@ -38,7 +38,11 @@ Everything is resumable and nothing is ever re-billed: `upload` skips objects
 already in the bucket, and `annotate` skips any five-page window whose
 response is already on disk. Re-running a completed run costs nothing. The
 window files are the unit of progress precisely so that a kill 300 pages into
-a 700-page part does not throw those 300 away.
+a 700-page part does not throw those 300 away. The one thing "already on
+disk" does not settle is a window holding a *page-level* error, which arrives
+inside a 200 OK and used to be checkpointed as though it had succeeded --
+`--retry-failed` re-submits those, and is the only flag here that re-bills
+pages deliberately.
 
 Stages (`--stage`, default `all`):
   upload    stream the PDFs out of the raw zips into GCS
@@ -54,6 +58,7 @@ import json
 import io
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -85,6 +90,14 @@ WORKERS = 10
 TOKEN_TTL_SECONDS = 45 * 60
 
 RETRIES = 5
+
+# Page-level Vision errors worth another attempt. Anything else ("Bad image
+# data.", a page box the renderer refuses) fails identically next time and is
+# written through, so the connector can name it instead of the run looping.
+RETRYABLE_PAGE_ERROR = re.compile(
+    r"currently unavailable|internal error|deadline exceeded|try again",
+    re.I,
+)
 
 _token_lock = threading.Lock()
 _token_cache: dict = {"value": None, "expires": 0.0}
@@ -239,21 +252,10 @@ def _window_name(pages: list[int]) -> str:
     return f"p{pages[0]:04d}-{pages[-1]:04d}.json.gz"
 
 
-def window_paths(part_dir: Path) -> list[Path]:
-    """Every response window for one part, in page order.
-
-    Both suffixes, because the first parts OCR'd landed before the files were
-    gzipped and re-OCRing them to change a filename would be paying twice for
-    bytes already on disk.
-    """
-    return sorted(list(part_dir.glob("p*.json.gz")) + list(part_dir.glob("p*.json")),
-                  key=lambda p: p.name)
-
-
-def load_window(path: Path) -> dict:
-    opener = gzip.open if path.suffix == ".gz" else open
-    with opener(path, "rt", encoding="utf-8") as fh:
-        return json.load(fh)
+# Reading these files back is states/west_bengal_ocr.py's job, not this
+# script's -- window_paths()/load_window() live there beside the parser that
+# consumes them, so the naming convention this stage writes and the one the
+# connector reads cannot drift apart.
 
 
 # -------------------------------------------------------------------- stages
@@ -310,15 +312,66 @@ def _annotate_window(uri: str, pages: list[int], project: str) -> list[dict]:
         "imageContext": {"languageHints": ["bn"]},
         "pages": pages,
     }]}
-    r = _api("POST", f"{VISION_ENDPOINT}/files:annotate", project, body)
-    inner = r.get("responses", [{}])[0]
-    if "error" in inner:
-        raise RuntimeError(f"{uri} pages {pages[0]}-{pages[-1]}: {inner['error']}")
-    return inner.get("responses", [])
+    for attempt in range(RETRIES):
+        r = _api("POST", f"{VISION_ENDPOINT}/files:annotate", project, body)
+        inner = r.get("responses", [{}])[0]
+        if "error" in inner:
+            raise RuntimeError(f"{uri} pages {pages[0]}-{pages[-1]}: {inner['error']}")
+        responses = inner.get("responses", [])
+        # A page-level error arrives inside a 200 OK, so _api's retry never
+        # sees it. Writing the window anyway checkpoints the failure forever:
+        # the next run skips the file because it exists, and those pages'
+        # electors are missing from the built AC with nothing in the log to
+        # say so. Found after the fact -- 10 pages of AC287 and 21 of AC291
+        # are on disk holding only "The service is currently unavailable.".
+        transient = [p for p, resp in zip(pages, responses)
+                     if RETRYABLE_PAGE_ERROR.search(resp.get("error", {}).get("message", ""))]
+        if not transient or attempt == RETRIES - 1:
+            return responses
+        _say(f"    retrying {uri} pages {transient} ({len(transient)} transient error(s))")
+        time.sleep((2 ** attempt) + random.random())
+    raise AssertionError("unreachable")
+
+
+def _existing_window(part_dir: Path, pages: list[int]) -> Path | None:
+    dest = part_dir / _window_name(pages)
+    for path in (dest, dest.with_suffix("")):   # ".json" from before gzip
+        if path.exists():
+            return path
+    return None
+
+
+def _window_is_poisoned(path: Path) -> bool:
+    """True if a window already on disk holds a page error worth retrying.
+
+    Windows written before _annotate_window learned to retry page-level
+    errors have those errors baked in, and "the file exists" is the only
+    thing the resume check ever asked. --retry-failed re-asks properly.
+    Unreadable or truncated counts as poisoned too: the alternative is
+    skipping it forever on the strength of its filename.
+    """
+    try:
+        opener = gzip.open if path.suffix == ".gz" else open
+        with opener(path, "rt", encoding="utf-8") as fh:
+            responses = json.load(fh).get("responses", [])
+    except (OSError, ValueError):
+        return True
+    return any(RETRYABLE_PAGE_ERROR.search(r.get("error", {}).get("message", ""))
+               for r in responses)
+
+
+def _window_pending(part_dir: Path, pages: list[int], retry_failed: bool) -> bool:
+    """Whether this window still needs OCR. The cost estimate and the work
+    itself both go through here, so a run cannot quote one number and do
+    another."""
+    path = _existing_window(part_dir, pages)
+    if path is None:
+        return True
+    return retry_failed and _window_is_poisoned(path)
 
 
 def _annotate_part(ac: str, stem: str, total: int, bucket: str, project: str,
-                   out_dir: Path) -> tuple[int, int]:
+                   out_dir: Path, retry_failed: bool = False) -> tuple[int, int]:
     """OCR whatever of one part is not already on disk. -> (billed, skipped)."""
     part_dir = out_dir / ac / stem
     part_dir.mkdir(parents=True, exist_ok=True)
@@ -326,7 +379,7 @@ def _annotate_part(ac: str, stem: str, total: int, bucket: str, project: str,
     billed = skipped = 0
     for pages in _windows(total):
         dest = part_dir / _window_name(pages)
-        if dest.exists() or dest.with_suffix("").exists():   # ".json" from before gzip
+        if not _window_pending(part_dir, pages, retry_failed):
             skipped += len(pages)
             continue
         responses = _annotate_window(uri, pages, project)
@@ -342,7 +395,8 @@ def _annotate_part(ac: str, stem: str, total: int, bucket: str, project: str,
 
 
 def stage_annotate(acs, raw_dir: Path, bucket: str, project: str, out_dir: Path,
-                   dry_run: bool, limit: int | None, workers: int) -> None:
+                   dry_run: bool, limit: int | None, workers: int,
+                   retry_failed: bool = False) -> None:
     plan: list[tuple[str, str, int]] = []
     for ac in acs:
         zip_path = raw_dir / f"{ac}.zip"
@@ -352,14 +406,11 @@ def stage_annotate(acs, raw_dir: Path, bucket: str, project: str, out_dir: Path,
         counts = page_counts(ac, zip_path, out_dir)
         plan += [(ac, stem, n) for stem, n in sorted(counts.items())]
 
-    def _have(part_dir: Path, pages: list[int]) -> bool:
-        dest = part_dir / _window_name(pages)
-        return dest.exists() or dest.with_suffix("").exists()
-
     pending = 0
     for ac, stem, total in plan:
         part_dir = out_dir / ac / stem
-        pending += sum(len(p) for p in _windows(total) if not _have(part_dir, p))
+        pending += sum(len(p) for p in _windows(total)
+                       if _window_pending(part_dir, p, retry_failed))
 
     pages = sum(n for _, _, n in plan)
     _say(f"{len(plan)} parts, {pages} pages, {pending} not yet OCR'd")
@@ -380,7 +431,7 @@ def stage_annotate(acs, raw_dir: Path, bucket: str, project: str, out_dir: Path,
     billed = done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_annotate_part, ac, stem, total, bucket, project,
-                               out_dir): (ac, stem)
+                               out_dir, retry_failed): (ac, stem)
                    for ac, stem, total in plan}
         for fut in as_completed(futures):
             ac, stem = futures[fut]
@@ -431,6 +482,11 @@ def main(argv=None) -> int:
     p.add_argument("--limit", type=int,
                    help="OCR at most this many parts this run -- a paid smoke "
                         "test before committing to the whole corpus")
+    p.add_argument("--retry-failed", action="store_true",
+                   help="re-OCR windows already on disk that hold a retryable "
+                        "page error (transient Vision failures were checkpointed "
+                        "as done before this script retried them). Pair with "
+                        "--dry-run first: it re-bills those pages.")
     p.add_argument("--dry-run", action="store_true",
                    help="report the page-exact bill, then stop")
     a = p.parse_args(argv)
@@ -444,7 +500,7 @@ def main(argv=None) -> int:
         # `upload --dry-run` should still cost out what it is uploading for.
         if a.stage != "upload" or a.dry_run:
             stage_annotate(acs, a.raw_dir, a.bucket, a.project, a.out_dir,
-                           a.dry_run, a.limit, a.workers)
+                           a.dry_run, a.limit, a.workers, a.retry_failed)
     if a.stage in ("backup", "all") and not a.dry_run:
         stage_backup(acs, a.bucket, a.out_dir)
     return 0
