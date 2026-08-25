@@ -78,12 +78,16 @@ def test_build_multi_state_populates_coverage(tmp_path, monkeypatch):
     assert total == 3
 
     row = conn.execute(
-        "SELECT state_id, label, acs_total, acs_digitized, locality_coverage "
+        "SELECT state_id, label, acs_total, acs_digitized, locality_coverage, roll_year "
         "FROM state_coverage WHERE state_id = 'karnataka'"
     ).fetchone()
     assert row is not None
-    state_id, label, acs_total, acs_digitized, locality_coverage = row
+    state_id, label, acs_total, acs_digitized, locality_coverage, roll_year = row
     assert label == "Karnataka"
+    # Resolved per state now rather than hardcoded -- Karnataka genuinely is a
+    # 2002 roll, so this asserts the resolution agrees with the old constant.
+    # See tests/test_roll_years.py for the non-2002 path.
+    assert roll_year == 2002
     assert acs_digitized == 2
     assert acs_total >= acs_digitized
     # Karnataka's source CSVs carry no locality column (see VoterRecord.locality
