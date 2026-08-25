@@ -622,3 +622,112 @@ def test_an_unexpected_error_still_stops_the_build(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError):
         build_db.build_per_ac(["brokenstate"], str(tmp_path / "out"), contract="c1", patch=0)
+
+
+class _ThreeACConnector(StateConnector):
+    """Three ACs whose raw files all sit in the same dir, one row each.
+
+    Module-level because the per-AC build runs connectors in a process pool
+    and a class defined inside a test function cannot be pickled across.
+    """
+
+    state_id = "scopestate"
+
+    def list_constituencies(self):
+        return [
+            Constituency(ac_code="AC001", ac_name="One", district="D1"),
+            Constituency(ac_code="AC002", ac_name="Two", district="D1"),
+            Constituency(ac_code="AC003", ac_name="Three", district="D1"),
+        ]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        return [VoterRecord(
+            state=self.state_id, district=ac.district, ac_code=ac.ac_code,
+            ac_name=ac.ac_name, part_no=1, serial_no=1, local_ref="",
+            full_name=f"Person {ac.ac_code}", full_relative_name="Relative",
+            relation_code="F", age=30, gender="M", roll_year=roll_year,
+            locality="Village One",
+        )]
+
+
+def _scope_raw(tmp_path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    for code in ("AC001", "AC002", "AC003"):
+        (raw_dir / f"{code}.csv").write_text("placeholder\n")
+    return raw_dir
+
+
+def test_acs_restricts_the_per_ac_build_to_the_named_acs(tmp_path, monkeypatch):
+    raw_dir = _scope_raw(tmp_path)
+    _register(monkeypatch, "scopestate", _ThreeACConnector, raw_dir)
+    out = tmp_path / "out"
+
+    build_db.build_per_ac(["scopestate"], str(out), patch=1, workers=1,
+                          ac_codes=["AC001", "AC003"])
+
+    built = sorted(p.name for p in (out / "scopestate").glob("*.sqlite"))
+    assert built == ["AC001-c1.p1.sqlite", "AC003-c1.p1.sqlite"]
+    # The catalog has to agree with the files, not with the connector's
+    # full list of constituencies -- the app fetches what ac_index names.
+    cat = sqlite3.connect(str(out / "catalog" / "scopestate.sqlite"))
+    assert [r[0] for r in cat.execute(
+        "SELECT ac_code FROM ac_index ORDER BY ac_code")] == ["AC001", "AC003"]
+    assert cat.execute(
+        "SELECT acs_digitized FROM state_coverage").fetchone()[0] == 2
+    cat.close()
+
+
+def test_an_ac_with_no_raw_file_stops_the_build(tmp_path, monkeypatch):
+    raw_dir = _scope_raw(tmp_path)
+    _register(monkeypatch, "scopestate", _ThreeACConnector, raw_dir)
+
+    # Deliberately fatal, not skipped: a typo'd or stale AC list that quietly
+    # builds fewer ACs than asked for is indistinguishable, downstream, from
+    # a state that genuinely is that small.
+    with pytest.raises(SystemExit) as exc:
+        build_db.build_per_ac(["scopestate"], str(tmp_path / "out"),
+                              workers=1, ac_codes=["AC001", "AC999"])
+    assert "AC999" in str(exc.value)
+    assert "AC001" not in str(exc.value)
+    assert str(raw_dir) in str(exc.value)
+
+
+def test_the_combined_path_scopes_the_same_way(tmp_path, monkeypatch):
+    raw_dir = _scope_raw(tmp_path)
+    _register(monkeypatch, "scopestate", _ThreeACConnector, raw_dir)
+    db = tmp_path / "combined.sqlite"
+
+    build_db.build_multi_state(["scopestate"], str(db), ac_codes=["AC002"])
+
+    conn = sqlite3.connect(str(db))
+    assert [r[0] for r in conn.execute(
+        "SELECT DISTINCT ac_code FROM voters")] == ["AC002"]
+    conn.close()
+
+
+def test_without_acs_the_scope_is_every_raw_file(tmp_path, monkeypatch):
+    raw_dir = _scope_raw(tmp_path)
+    _register(monkeypatch, "scopestate", _ThreeACConnector, raw_dir)
+    out = tmp_path / "out"
+
+    build_db.build_per_ac(["scopestate"], str(out), workers=1)
+
+    assert len(list((out / "scopestate").glob("*.sqlite"))) == 3
+
+
+def test_ac_codes_are_matched_case_and_whitespace_insensitively(tmp_path, monkeypatch):
+    # The list arrives off a comma-split of a make variable, so " ac001 "
+    # is a realistic input, not a contrived one.
+    raw_dir = _scope_raw(tmp_path)
+    _register(monkeypatch, "scopestate", _ThreeACConnector, raw_dir)
+    out = tmp_path / "out"
+
+    build_db.build_per_ac(["scopestate"], str(out), workers=1,
+                          ac_codes=[" ac001 ", "Ac002", ""])
+
+    built = sorted(p.name for p in (out / "scopestate").glob("*.sqlite"))
+    assert built == ["AC001-c1.p0.sqlite", "AC002-c1.p0.sqlite"]

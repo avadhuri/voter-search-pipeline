@@ -127,6 +127,15 @@ roll-years: ## Regenerate states/meta/sir_source_urls/state_roll_years.json from
 migrate-translit: ## Backfill Latin-transliteration columns on an already-built DB
 	$(PY) -m migrate_translit $${DB_PATH:-$(MULTI_DB)}
 
+# ACS=AC140,AC141,... restricts the build to those ACs and fails on any
+# that has no raw file. Without it the scope is every raw file in the
+# state's raw_dir, which is right only by accident: West Bengal's live 19
+# ACs were 19 because that is all that had been downloaded, and once the
+# full 245-file download landed the identical command meant something else
+# entirely -- 224 of those ACs are typeset in a script the connector cannot
+# decode, so they build into rows with empty names that no search can ever
+# return. Declare the scope.
+#
 # `make build-db-ac STATES=haryana` builds just Haryana's per-AC files;
 # `make build-db-ac` alone defaults to all three live states. Always
 # contract=c1. PATCH=N picks the content revision (default 0, matching a
@@ -145,8 +154,8 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 # fans per-AC parsing out across (default: cpu_count - 1); an interrupted
 # run is safe to just re-run -- already-finalized AC files are skipped, not
 # rebuilt.
-build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; PATCH=n revision; OUT=dir; WORKERS=n)
-	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(if $(OUT),$(OUT),$(AC_DB_LOCAL_DIR)) $(if $(PATCH),--patch $(PATCH),) $(if $(WORKERS),--workers $(WORKERS),)
+build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; ACS=AC1,AC2; PATCH=n revision; OUT=dir; WORKERS=n)
+	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(if $(OUT),$(OUT),$(AC_DB_LOCAL_DIR)) $(if $(PATCH),--patch $(PATCH),) $(if $(WORKERS),--workers $(WORKERS),) $(if $(ACS),--acs $(ACS),)
 
 # The gate between "it built" and "it can be served". Every check it runs is
 # for something that produces a completely normal-looking build -- right row
