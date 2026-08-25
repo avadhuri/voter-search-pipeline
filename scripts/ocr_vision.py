@@ -96,14 +96,32 @@ def _say(msg: str) -> None:
         print(msg, flush=True)
 
 
-def _token() -> str:
+def _token(force: bool = False) -> str:
+    """The current access token, re-minted when it ages out or is rejected.
+
+    force is what a 401 passes back in. A cached token is not only an expiry
+    risk: gcloud can hand back a token Vision rejects outright
+    (ACCESS_TOKEN_TYPE_UNSUPPORTED), and cached under a TTL that reads as
+    still-valid, every worker then fails against the same bad value until the
+    TTL runs out. A 45-minute unattended run died at 70% that way -- 169
+    consecutive 401s, no retry, because a bad token was classified as a
+    permanent failure rather than a refreshable one.
+    """
     with _token_lock:
         now = time.monotonic()
-        if _token_cache["value"] is None or now >= _token_cache["expires"]:
-            _token_cache["value"] = subprocess.run(
+        if force or _token_cache["value"] is None or now >= _token_cache["expires"]:
+            minted = subprocess.run(
                 ["gcloud", "auth", "print-access-token"],
                 capture_output=True, text=True, check=True,
             ).stdout.strip()
+            # Refuse to cache something that cannot be a bearer token rather
+            # than spending the next TTL discovering it one 401 at a time.
+            if not minted.startswith("ya29."):
+                raise RuntimeError(
+                    "gcloud returned something that is not an OAuth access "
+                    f"token ({minted[:16]!r}...). Run: gcloud auth login"
+                )
+            _token_cache["value"] = minted
             _token_cache["expires"] = now + TOKEN_TTL_SECONDS
         return _token_cache["value"]
 
@@ -112,11 +130,17 @@ def _api(method: str, url: str, project: str, body: dict | None = None) -> dict:
     """One Vision call, retried on the failures that are worth retrying.
 
     429 and 5xx are transient and a run this long will meet both; anything
-    else (a malformed request, a missing object, a revoked token) will fail
-    identically on the next attempt, so it is raised immediately rather than
-    burning five backoffs on it.
+    else (a malformed request, a missing object) will fail identically on the
+    next attempt, so it is raised immediately rather than burning five
+    backoffs on it.
+
+    401 is the exception, and it is one this run learned the hard way: a
+    cached token that expired or that gcloud minted wrong is refreshable, not
+    permanent. It is retried exactly once per call, forcing a new token first,
+    so a genuinely revoked credential still fails fast instead of looping.
     """
     data = json.dumps(body).encode() if body is not None else None
+    forced = False
     for attempt in range(RETRIES):
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Authorization", f"Bearer {_token()}")
@@ -130,6 +154,10 @@ def _api(method: str, url: str, project: str, body: dict | None = None) -> dict:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:800]
+            if e.code == 401 and not forced:
+                forced = True
+                _token(force=True)
+                continue          # no backoff: the token, not the service, was bad
             if e.code not in (429, 500, 502, 503, 504) or attempt == RETRIES - 1:
                 raise RuntimeError(f"{method} {url} -> {e.code}: {detail}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as e:
