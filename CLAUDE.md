@@ -31,6 +31,12 @@ up-to-date source of truth for what's runnable, more so than this file.
 - `states/<state>.py` — one connector module per state (`karnataka.py`,
   `west_bengal.py`, `haryana.py`). All state-specific weirdness (PDF vs
   CSV, legacy font decoding, which ACs are even fetchable) lives here.
+- `states/eci_codes.py` — the one table mapping a `state_id` onto the
+  Election Commission's own state/UT code (S01–S29, U01–U09). Two build-time
+  joins key off it — `roll_years.py` (which roll year to stamp) and
+  `source_urls.py` (which per-part workbook to read) — and a state present in
+  one and absent from the other is a half-wired state, so there is one copy.
+  Declaring a code here is the whole wiring cost for both.
 - `states/registry.py` — single source of truth for which states exist,
   their connector class, and where their raw files live
   (`raw_dir`/`raw_glob`). Both `build_db.py` and the closed app import
@@ -92,6 +98,22 @@ any other state or comma-list) builds just those states; `make build-db
 AC=A085` builds a single-AC DB. See `scripts/build_db.py`'s module
 docstring for the exact CLI shapes if you need something the Makefile
 doesn't wrap.
+
+**A build stops on a meta/raw-file disagreement rather than degrading.**
+Two guards in `build_db.py`, both for failures that are invisible
+downstream. `_ac_lookup()` refuses a state whose `list_constituencies()`
+returns the same `ac_code` twice (`DuplicateConstituencyError`) — building
+the dict alone keeps the last entry and silently drops the rest, so an AC
+builds fine under another AC's name and district while `acs_total`
+under-counts. `_resolve_ac()` raises (`UnknownConstituencyError`) on a raw
+file naming an AC the meta doesn't declare, instead of the blank
+`ac_name`/`district` it used to fall back to — a blank district makes an AC
+unreachable in the serving app's picker, whose primary tier is district, and
+a blank name makes it unrecognizable once reached. Neither shows up in any
+search-quality check: those drive searches by explicit `(state, ac_code)`.
+A build is offline, re-runnable and watched, so stopping is the right
+failure direction there; this is not the serving side's degrade-don't-break
+rule.
 
 **Each state is stamped with its own roll year, resolved at build time.**
 The "2002 rolls" are not all from 2002 — the intensive-revision cycle ran

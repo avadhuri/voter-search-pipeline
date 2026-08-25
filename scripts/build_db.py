@@ -51,6 +51,7 @@ Usage:
         that for every state in the build; omit it unless you specifically
         mean to.
 """
+import collections
 import datetime
 import glob
 import os
@@ -60,7 +61,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from states.base import Constituency
 from states.karnataka import KarnatakaConnector
 from states.registry import STATE_CONNECTORS
 from states.roll_years import resolve_roll_year, roll_year_for
@@ -191,14 +191,68 @@ RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Gua
 def _load_ac_lookup():
     """ac_code -> Constituency, from states/meta/ac_meta.json (via the connector's
     own loader, so this and list_constituencies() can't drift)."""
-    return {ac.ac_code: ac for ac in KarnatakaConnector().list_constituencies()}
+    return _ac_lookup(KarnatakaConnector(), "karnataka")
 
 
-def _resolve_ac(ac_code, ac_lookup):
-    """Known AC -> its real metadata; unknown code (shouldn't happen given
-    filenames come from ac_meta.json in the first place) -> blank fields,
-    same as the old behavior, rather than raising."""
-    return ac_lookup.get(ac_code) or Constituency(ac_code=ac_code, ac_name="", district="")
+class UnknownConstituencyError(ValueError):
+    """A raw file names an ac_code the state's meta doesn't declare."""
+
+
+class DuplicateConstituencyError(ValueError):
+    """A state's meta declares the same ac_code more than once."""
+
+
+def _ac_lookup(connector, state_id):
+    """ac_code -> Constituency for one state, refusing a meta file that
+    declares the same ac_code twice.
+
+    Building the dict alone would silently keep the last entry per code and
+    drop the rest, and the loss is close to invisible: the AC still builds
+    (its raw file is keyed by code, and some entry matched), it just gets
+    another AC's name and district, and `acs_total` under-counts by however
+    many were swallowed. Nothing downstream can tell -- the rows parse,
+    score and rank exactly as they should, and the picker just shows a
+    wrong label. Real instance: an incoming state's generated meta had 44
+    entries for 32 distinct ac_no values, one of them repeated four times.
+    """
+    acs = list(connector.list_constituencies())
+    lookup = {ac.ac_code: ac for ac in acs}
+    if len(lookup) != len(acs):
+        counts = collections.Counter(ac.ac_code for ac in acs)
+        dupes = sorted(f"{code} x{n}" for code, n in counts.items() if n > 1)
+        raise DuplicateConstituencyError(
+            f"{state_id}: list_constituencies() returned {len(acs)} entries "
+            f"for {len(lookup)} distinct ac_code values -- {', '.join(dupes)}. "
+            f"Fix states/meta/{state_id}_ac_meta.json rather than letting the "
+            f"duplicates be silently dropped."
+        )
+    return lookup
+
+
+def _resolve_ac(ac_code, ac_lookup, state_id=None):
+    """Known AC -> its real metadata. An unknown code raises.
+
+    It used to fall back to blank ac_name/district, which reads as harmless
+    -- the filenames come from the meta in the first place, so it "shouldn't
+    happen". But a blank district is not a cosmetic gap on the serving side:
+    the picker's whole primary tier is district, so an AC with no district
+    is one a user cannot navigate to at all, and an AC with no name is one
+    they cannot recognize once there. Both are invisible to every
+    search-quality check, which drives searches by explicit (state,
+    ac_code). A build is offline, re-runnable, and watched by whoever
+    started it -- the right failure direction there is to stop, not to
+    publish an unreachable AC.
+    """
+    ac = ac_lookup.get(ac_code)
+    if ac is None:
+        where = f"{state_id}: " if state_id else ""
+        raise UnknownConstituencyError(
+            f"{where}raw file names ac_code {ac_code!r}, which "
+            f"list_constituencies() doesn't declare. Either the meta is "
+            f"stale (regenerate it) or the file doesn't belong in this "
+            f"state's raw_dir."
+        )
+    return ac
 
 
 def _records_to_rows(records):
@@ -253,7 +307,7 @@ def build_single(raw_csv_path, db_path, roll_year=None):
     roll_year = roll_year if roll_year is not None else resolve_roll_year("karnataka")
     ac_code = os.path.splitext(os.path.basename(raw_csv_path))[0]
     connector = KarnatakaConnector()
-    ac = _resolve_ac(ac_code, _load_ac_lookup())
+    ac = _resolve_ac(ac_code, _load_ac_lookup(), "karnataka")
 
     with open(raw_csv_path, "rb") as f:
         raw = f.read()
@@ -287,7 +341,7 @@ def build_combined(raw_dir, db_path, roll_year=None):
     total = 0
     for path in csv_paths:
         ac_code = os.path.splitext(os.path.basename(path))[0]
-        ac = _resolve_ac(ac_code, ac_lookup)
+        ac = _resolve_ac(ac_code, ac_lookup, "karnataka")
         with open(path, "rb") as f:
             raw = f.read()
         records = connector.parse_raw(raw, ac, roll_year)
@@ -334,13 +388,13 @@ def build_multi_state(state_ids, db_path, roll_year=None):
         info = STATE_CONNECTORS[state_id]
         connector = info["connector_cls"]()
         state_roll_year = roll_year_for(info, state_id, override=roll_year)
-        ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
+        ac_lookup = _ac_lookup(connector, state_id)
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_total = 0
         acs_with_locality = set()
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
-            ac = _resolve_ac(ac_code, ac_lookup)
+            ac = _resolve_ac(ac_code, ac_lookup, state_id)
             with open(path, "rb") as f:
                 raw = f.read()
             records = connector.parse_raw(raw, ac, state_roll_year)
@@ -490,7 +544,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
         connector_cls = info["connector_cls"]
         connector = connector_cls()
         state_roll_year = roll_year_for(info, state_id, override=roll_year)
-        ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
+        ac_lookup = _ac_lookup(connector, state_id)
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_dir = os.path.join(out_dir, state_id)
         os.makedirs(state_dir, exist_ok=True)
@@ -498,7 +552,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
         tasks = []
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
-            ac = _resolve_ac(ac_code, ac_lookup)
+            ac = _resolve_ac(ac_code, ac_lookup, state_id)
             ac_db_path = os.path.join(state_dir, f"{ac_code}-{contract}.p{patch}.sqlite")
             tasks.append((state_id, connector_cls, path, ac_db_path, contract, patch, ac, state_roll_year))
 

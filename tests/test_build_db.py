@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 import build_db
 from states.base import Constituency, StateConnector, VoterRecord
 from states.karnataka import CSV_URL_TEMPLATE, KarnatakaConnector
@@ -237,3 +239,91 @@ def test_build_per_ac_populates_catalog_locality(tmp_path, monkeypatch):
     }
     assert localities == {"Fake Village"}
     cat_conn.close()
+
+
+# --- meta/raw-file disagreements stop the build instead of degrading ------
+
+class _DupeMetaConnector(StateConnector):
+    """Mimics a generated meta file that lists the same AC more than once --
+    the real instance had 44 entries for 32 distinct ac_no values."""
+
+    def list_constituencies(self):
+        return [
+            Constituency(ac_code="1", ac_name="First", district="D1"),
+            Constituency(ac_code="2", ac_name="Second", district="D2"),
+            Constituency(ac_code="1", ac_name="First Again", district="D9"),
+        ]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        return []
+
+
+class _TwoACConnector(StateConnector):
+    def list_constituencies(self):
+        return [Constituency(ac_code="F001", ac_name="First", district="D1")]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        return []
+
+
+def _register(monkeypatch, state_id, cls, raw_dir):
+    monkeypatch.setitem(build_db.STATE_CONNECTORS, state_id, {
+        "connector_cls": cls,
+        "label": state_id.title(),
+        "raw_dir": str(raw_dir),
+        "raw_glob": "*.csv",
+        "script": "latin",
+    })
+
+
+def test_a_meta_declaring_one_ac_twice_stops_the_build(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "1.csv").write_text("placeholder\n")
+    _register(monkeypatch, "dupestate", _DupeMetaConnector, raw_dir)
+
+    with pytest.raises(build_db.DuplicateConstituencyError) as exc:
+        build_db.build_multi_state(["dupestate"], str(tmp_path / "out.sqlite"))
+    # Names the offending code and how many times, so the fix doesn't need
+    # a diff of the meta file to locate.
+    assert "1 x2" in str(exc.value)
+
+
+def test_a_raw_file_for_an_undeclared_ac_stops_the_build(tmp_path, monkeypatch):
+    """Used to silently produce an AC with blank district and ac_name --
+    unreachable in the picker (district is its primary tier) and
+    unrecognizable once reached, with every search-quality check green."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "F001.csv").write_text("placeholder\n")
+    (raw_dir / "F999.csv").write_text("placeholder\n")
+    _register(monkeypatch, "strayfile", _TwoACConnector, raw_dir)
+
+    with pytest.raises(build_db.UnknownConstituencyError) as exc:
+        build_db.build_multi_state(["strayfile"], str(tmp_path / "out.sqlite"))
+    assert "F999" in str(exc.value)
+    assert "strayfile" in str(exc.value)
+
+
+def test_the_same_two_guards_apply_on_the_per_ac_path(tmp_path, monkeypatch):
+    """--per-ac is the production build path; the guards are worth nothing
+    if they only cover the combined one."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "F999.csv").write_text("placeholder\n")
+    _register(monkeypatch, "strayfile", _TwoACConnector, raw_dir)
+    with pytest.raises(build_db.UnknownConstituencyError):
+        build_db.build_per_ac(["strayfile"], str(tmp_path / "per_ac"), workers=1)
+
+    dupe_raw = tmp_path / "raw2"
+    dupe_raw.mkdir()
+    (dupe_raw / "1.csv").write_text("placeholder\n")
+    _register(monkeypatch, "dupestate", _DupeMetaConnector, dupe_raw)
+    with pytest.raises(build_db.DuplicateConstituencyError):
+        build_db.build_per_ac(["dupestate"], str(tmp_path / "per_ac2"), workers=1)
