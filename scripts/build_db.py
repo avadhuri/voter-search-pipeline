@@ -26,13 +26,13 @@ Usage:
         POC-regression path; --states below does the same thing without a
         raw_dir override, and also populates state_coverage.
 
-    build_db.py --states karnataka,west_bengal <sqlite_db_path> [--roll-year YYYY]
+    build_db.py --states karnataka,west_bengal <sqlite_db_path> [--roll-year YYYY] [--acs AC1,AC2]
         Build/overwrite one combined DB across every listed state, each
         read from its states/registry.py raw_dir/raw_glob. Still useful for
         local CLI/dev use (scripts/search.py, ad hoc queries) even though
         production serving has moved to --per-ac below.
 
-    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0] [--workers N] [--roll-year YYYY]
+    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0] [--workers N] [--roll-year YYYY] [--acs AC1,AC2]
         Build one <out_dir>/<state>/<ac_code>-<contract>.p<patch>.sqlite per
         AC, plus one <out_dir>/catalog/<state>.sqlite per state (a small
         state_coverage + ac_index summary, no voter rows). contract is the
@@ -53,6 +53,11 @@ Usage:
         elector's year of birth as `roll_year - age`. --roll-year overrides
         that for every state in the build; omit it unless you specifically
         mean to.
+
+        --acs restricts the build to a named list of AC codes, and fails if
+        any of them has no raw file. Without it the scope is every raw file
+        present in the state's raw_dir, which makes the same command mean
+        different things as downloads accumulate -- see _scope_paths.
 """
 import collections
 import datetime
@@ -435,7 +440,39 @@ def build_combined(raw_dir, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
     conn.close()
 
 
-def build_multi_state(state_ids, db_path, roll_year=None):
+def _scope_paths(paths, ac_codes, state_id, info):
+    """Restrict a state's raw files to an explicitly-named set of ACs.
+
+    A build's scope has to be *declared*, not inherited from whatever raw
+    files happen to be sitting in the raw dir. West Bengal's live 19 ACs
+    were only ever 19 because that is all that had been downloaded when
+    they were built; once the full 245-file download landed, the identical
+    command silently meant something else. 224 of those ACs are typeset in
+    a script this connector cannot decode, so they parse into rows with
+    empty names -- which score 0 against any query and are dropped by the
+    serving app's SCORE_THRESHOLD, making them unfindable by any search.
+    The build was three million nameless rows in before anyone noticed.
+
+    Missing ACs are fatal rather than skipped, because a typo'd or stale AC
+    list quietly building fewer ACs than asked for is indistinguishable,
+    downstream, from a state that genuinely is that small.
+    """
+    if not ac_codes:
+        return paths
+    wanted = {c.strip().upper() for c in ac_codes if c.strip()}
+    kept = [p for p in paths
+            if os.path.splitext(os.path.basename(p))[0].upper() in wanted]
+    missing = sorted(wanted - {os.path.splitext(os.path.basename(p))[0].upper()
+                               for p in kept})
+    if missing:
+        raise SystemExit(
+            f"{state_id}: no raw file for {', '.join(missing)} "
+            f"(looked in {info['raw_dir']} for {info['raw_glob']})"
+        )
+    return kept
+
+
+def build_multi_state(state_ids, db_path, roll_year=None, ac_codes=None):
     """Build one DB combining every listed state's raw files, per
     states/registry.py's connector class + raw_dir/raw_glob for each.
 
@@ -469,6 +506,7 @@ def build_multi_state(state_ids, db_path, roll_year=None):
         state_roll_year = roll_year_for(info, state_id, override=roll_year)
         ac_lookup = _ac_lookup(connector, state_id)
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
+        paths = _scope_paths(paths, ac_codes, state_id, info)
         state_total = 0
         acs_with_locality = set()
         unparseable = []
@@ -624,7 +662,8 @@ def _build_one_ac(task):
     }
 
 
-def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, workers=None):
+def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, workers=None,
+                 ac_codes=None):
     """Build one small <ac_code>-<contract>.p<patch>.sqlite per (state,
     ac_code), plus one small catalog.sqlite per state -- the native per-AC
     serving artifact set (no combined DB is built or needed for this path;
@@ -643,6 +682,10 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
     roll_year is resolved per state (states/roll_years.py), not taken as one
     number for the whole build -- see build_multi_state's docstring for why
     that matters. The parameter remains as an all-states override.
+
+    ac_codes, when given, restricts the build to those ACs and fails if any
+    of them has no raw file. Without it the scope is every raw file present,
+    which is only ever right by accident -- see the comment at the filter.
     """
     unknown = [s for s in state_ids if s not in STATE_CONNECTORS]
     if unknown:
@@ -662,7 +705,10 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
         connector = connector_cls()
         state_roll_year = roll_year_for(info, state_id, override=roll_year)
         ac_lookup = _ac_lookup(connector, state_id)
-        paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
+        paths = _scope_paths(
+            sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"]))),
+            ac_codes, state_id, info,
+        )
         state_dir = os.path.join(out_dir, state_id)
         os.makedirs(state_dir, exist_ok=True)
 
@@ -784,11 +830,13 @@ if __name__ == "__main__":
         # --roll-year forces every state in this build to one year. Omit it
         # (the normal case) and each state gets its own, per roll_years.py.
         roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
+        acs = sys.argv[sys.argv.index("--acs") + 1].split(",") if "--acs" in sys.argv else None
         build_per_ac(state_ids, out_dir, contract=contract, patch=patch,
-                     roll_year=roll_year, workers=workers)
-    elif sys.argv[1:2] == ["--states"] and len(sys.argv) in (4, 6):
+                     roll_year=roll_year, workers=workers, ac_codes=acs)
+    elif sys.argv[1:2] == ["--states"] and len(sys.argv) in (4, 6, 8):
         roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
-        build_multi_state(sys.argv[2].split(","), sys.argv[3], roll_year=roll_year)
+        acs = sys.argv[sys.argv.index("--acs") + 1].split(",") if "--acs" in sys.argv else None
+        build_multi_state(sys.argv[2].split(","), sys.argv[3], roll_year=roll_year, ac_codes=acs)
     elif len(sys.argv) == 3:
         build_single(sys.argv[1], sys.argv[2], state_id=legacy_state_id)
     else:
