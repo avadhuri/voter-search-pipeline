@@ -40,6 +40,12 @@ def split_state(state_id):
         return
 
     out_dir = os.path.join(CSV_BASE, state_id, "per_ac")
+
+    # Skip if already split (per_ac/ exists and has CSV files)
+    if os.path.isdir(out_dir) and any(f.endswith(".csv") for f in os.listdir(out_dir)):
+        print(f"  SKIP {state_id}: already split ({out_dir})")
+        return
+
     os.makedirs(out_dir, exist_ok=True)
 
     # Stream through the file, writing rows to per-AC files
