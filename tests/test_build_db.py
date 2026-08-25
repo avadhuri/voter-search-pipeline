@@ -553,6 +553,17 @@ def test_one_unparseable_ac_does_not_take_the_rest_of_the_build_with_it(
         ).fetchone()
         assert digitized == 1
         assert coverage == "full"
+        # The invariant that actually broke in production: state_coverage's
+        # headline count and ac_index -- the table the app searches -- have to
+        # describe the same set of ACs. The live Haryana catalog advertised
+        # "42 of 90 constituencies digitized" beside a voter total summed from
+        # the 44 ACs its own ac_index holds, because acs_digitized counted raw
+        # files rather than builds. app.py reads this field directly for the
+        # per-state card, sums it for the site-wide constituency figure, and
+        # gates a state's liveness on it being > 0, so a wrong value here is a
+        # wrong public claim, not a cosmetic one.
+        indexed = cat.execute("SELECT COUNT(*) FROM ac_index").fetchone()[0]
+        assert digitized == indexed
     finally:
         cat.close()
 
