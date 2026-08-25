@@ -21,6 +21,7 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "meghalaya"
+ROLL_YEAR = 2005
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 ROW_TOL = 5.0
@@ -28,6 +29,7 @@ CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 # Column indices inside an 8-cell row (0-based)
@@ -264,13 +266,264 @@ def _load_meta():
 # -- Main ----------------------------------------------------------------------
 
 
+# ── CSV post-processing ──────────────────────────────────────────────────
+
+VALID_SEX = {"M", "F", ""}
+VALID_RELATION = {"F", "H", "M", "O", ""}
+
+
+def _extract_sex(val):
+    """Try to extract F or M from OCR-noisy sex values.
+
+    Common Meghalaya patterns:
+    - "M 18", "F 20" → F/M with age appended
+    - "M18", "F22" → concatenated
+    - "Fo", "Foo", "FB", "FE", "FO" → OCR misread of F
+    - "Mo", "Moa", "Moat", "Mom", "MB" → OCR misread of M
+    - "18", "30" → pure age (sex missing)
+    - "VI", "IV", "a", "r" → OCR garbage
+    """
+    if not val:
+        return ""
+    first = val[0]
+    if first == "F" and (len(val) == 1 or not val[1:].strip().isalpha()
+                          or val[1:] in ("o", "oo", "oot", "B", "E", "O")):
+        return "F"
+    if first == "M" and (len(val) == 1 or not val[1:].strip().isalpha()
+                          or val[1:] in ("o", "oa", "oat", "om", "oo", "B", "8")):
+        return "M"
+    # "M =" pattern
+    if val.startswith("M ") or val.startswith("M="):
+        return "M"
+    if val.startswith("F ") or val.startswith("F="):
+        return "F"
+    return ""
+
+
+_EPIC_RE = re.compile(
+    r"(?:MG/\d{2}/\d{3}/\d{5,})"       # MG/01/004/000294
+    r"|(?:[A-Z]{2,4}\d{5,})"            # GTD0181503, DWNO0142059, BZX0178970
+)
+
+_DIGIT_EPIC_RE = re.compile(
+    r"^(\d{1,3})\s+"                    # leading age digits + space
+    r"(" + _EPIC_RE.pattern + r".*?)$"  # EPIC (possibly OCR-damaged tail)
+)
+
+
+def _postprocess(csv_path):
+    """Fix column-bleeding issues in an already-extracted CSV.
+
+    Meghalaya-specific fixes (OCR'd scanned PDFs, heavy noise):
+
+    1. **EPIC-in-age (digit+EPIC)**: age like "51 MG/01/004/000409" — split
+       into age=51 and epic_no=MG/01/004/000409 (only when epic_no is empty).
+
+    2. **EPIC-in-age (pure EPIC, full column shift)**: age is a bare EPIC
+       with no leading digits.  The entire right half of the row is shifted
+       one column right: relation_name holds sex (M/F), sex is empty, age
+       holds EPIC, epic_no is empty.  Fix: move relation_name→sex,
+       age→epic_no, clear age.
+
+    3. **Sex column noise**: OCR misreads like "Fo", "Moa", "M 18", "F20",
+       pure ages ("18"), or garbage ("VI", "a").  Extract F/M where
+       possible; else clear.
+
+    4. **elector_name = "F 55" / "M 30"**: sex+age landed in name column
+       (rest of row usually empty).  Move sex and age out of name; clear
+       name since actual name is lost.
+
+    5. **Relation column noise**: same OCR junk treatment — keep only
+       F/H/M/O/W, clear the rest.
+
+    6. **EPIC in relation_name (no elector_name)**: relation_name sometimes
+       holds an EPIC when elector_name is empty — move to epic_no.
+
+    7. **Drop empty-name junk rows**: serial_no=0 with no elector_name,
+       relation_name, sex, or age is OCR debris — drop entirely.
+    """
+    import tempfile, shutil
+
+    fixes = {
+        "total": 0, "kept": 0, "dropped": 0,
+        "epic_from_age_split": 0, "epic_from_age_shift": 0,
+        "sex_from_shift": 0, "sex_cleaned": 0, "sex_from_name": 0,
+        "age_from_name": 0, "rel_cleaned": 0, "name_cleared": 0,
+        "epic_from_rname": 0, "epic_from_name": 0,
+        "sex_age_from_rname": 0, "header_dropped": 0,
+    }
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8",
+                                      dir=os.path.dirname(csv_path),
+                                      suffix=".csv", delete=False)
+    try:
+        with open(csv_path, encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            for row in reader:
+                fixes["total"] += 1
+                sex = row["sex"].strip()
+                rel = row["relation"].strip()
+                age = row["age"].strip()
+                epic = row["epic_no"].strip()
+                name = row["elector_name"].strip()
+                rname = row["relation_name"].strip()
+                sn = row["serial_no"].strip()
+
+                # --- Fix 1: digit+EPIC in age ---------------------------
+                dm = _DIGIT_EPIC_RE.match(age)
+                if dm and not epic:
+                    row["age"] = dm.group(1)
+                    row["epic_no"] = re.sub(r"\s+", "", dm.group(2))  # OCR spaces
+                    age = row["age"]
+                    epic = row["epic_no"]
+                    fixes["epic_from_age_split"] += 1
+
+                # --- Fix 2: pure EPIC in age (full column shift) ---------
+                elif _EPIC_RE.search(age) and not epic:
+                    row["epic_no"] = re.sub(r"\s+", "", age)
+                    row["age"] = ""
+                    epic = row["epic_no"]
+                    age = ""
+                    fixes["epic_from_age_shift"] += 1
+                    # relation_name likely holds sex (M/F) in shifted rows
+                    if not sex and rname:
+                        rname_clean = rname.strip().rstrip("'").upper()
+                        if rname_clean in ("M", "F"):
+                            row["sex"] = rname_clean
+                            row["relation_name"] = ""
+                            sex = rname_clean
+                            rname = ""
+                            fixes["sex_from_shift"] += 1
+
+                # --- Fix 3a: EPIC as elector_name ----------------------
+                if name and not epic and _EPIC_RE.fullmatch(name):
+                    row["epic_no"] = name
+                    row["elector_name"] = ""
+                    epic = name
+                    name = ""
+                    fixes["epic_from_name"] += 1
+
+                # --- Fix 3b: header junk in elector_name ---------------
+                if re.search(r"Original.*Mother.*Roll|Intensive.*Revision"
+                             r"|Male.*Female|Page\s+No", name, re.I):
+                    fixes["header_dropped"] += 1
+                    fixes["dropped"] += 1
+                    continue
+
+                # --- Fix 4: elector_name = "F 55" / "M 30" --------------
+                nm = re.fullmatch(r"([FM])\s+(\d{1,3})", name)
+                if nm:
+                    if not sex:
+                        row["sex"] = nm.group(1)
+                        sex = nm.group(1)
+                        fixes["sex_from_name"] += 1
+                    if not age:
+                        row["age"] = nm.group(2)
+                        age = nm.group(2)
+                        fixes["age_from_name"] += 1
+                    row["elector_name"] = ""
+                    name = ""
+                    fixes["name_cleared"] += 1
+
+                # --- Fix 3: sex column noise -----------------------------
+                if sex not in VALID_SEX:
+                    row["sex"] = _extract_sex(sex)
+                    fixes["sex_cleaned"] += 1
+
+                # --- Fix 5: relation column noise ------------------------
+                if rel not in VALID_RELATION:
+                    stripped = rel.strip()
+                    parts = stripped.split()
+                    if parts and parts[0] in ("F", "H", "M", "O", "W"):
+                        row["relation"] = parts[0]
+                    elif parts and parts[-1] in ("F", "H", "M", "O", "W"):
+                        row["relation"] = parts[-1]
+                    else:
+                        row["relation"] = ""
+                    fixes["rel_cleaned"] += 1
+
+                # --- Fix 5b: sex+age in relation_name ("M 39", "F 20") ---
+                rname = row["relation_name"].strip()
+                sex = row["sex"].strip()
+                age = row["age"].strip()
+                rm = re.fullmatch(r"([FM])\s+(\d{1,3})", rname)
+                if rm:
+                    if not sex:
+                        row["sex"] = rm.group(1)
+                        sex = rm.group(1)
+                    if not age:
+                        row["age"] = rm.group(2)
+                        age = rm.group(2)
+                    row["relation_name"] = ""
+                    rname = ""
+                    fixes["sex_age_from_rname"] += 1
+
+                # --- Fix 6: EPIC in relation_name when name is empty -----
+                rname = row["relation_name"].strip()
+                if not name and not epic and rname and _EPIC_RE.fullmatch(rname):
+                    row["epic_no"] = rname
+                    row["relation_name"] = ""
+                    fixes["epic_from_rname"] += 1
+
+                # --- Fix 7: drop empty junk rows -------------------------
+                name = row["elector_name"].strip()
+                rname = row["relation_name"].strip()
+                sex = row["sex"].strip()
+                age = row["age"].strip()
+                sn = row["serial_no"].strip()
+                if not name and not rname and not sex and not age:
+                    if sn == "0" or not sn:
+                        fixes["dropped"] += 1
+                        continue
+
+                # --- Clean non-numeric age remnants ----------------------
+                age = row["age"].strip()
+                if age and not re.fullmatch(r"\d{1,3}", age):
+                    # Try to extract leading digits
+                    m = re.match(r"^(\d{1,3})\b", age)
+                    row["age"] = m.group(1) if m else ""
+
+                fixes["kept"] += 1
+                writer.writerow(row)
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Postprocess {csv_path}:")
+    print(f"  {fixes['total']:,} rows processed, {fixes['kept']:,} kept, "
+          f"{fixes['dropped']:,} dropped")
+    print(f"  {fixes['epic_from_age_split']:,} EPIC split from age (digit+EPIC)")
+    print(f"  {fixes['epic_from_age_shift']:,} EPIC moved from age (pure EPIC, column shift)")
+    print(f"  {fixes['sex_from_shift']:,} sex recovered from shifted relation_name")
+    print(f"  {fixes['sex_from_name']:,} sex recovered from elector_name (F 55 pattern)")
+    print(f"  {fixes['sex_cleaned']:,} sex values cleaned (OCR noise)")
+    print(f"  {fixes['age_from_name']:,} age recovered from elector_name")
+    print(f"  {fixes['name_cleared']:,} elector_name cleared (was sex+age)")
+    print(f"  {fixes['rel_cleaned']:,} relation values cleaned")
+    print(f"  {fixes['sex_age_from_rname']:,} sex+age recovered from relation_name")
+    print(f"  {fixes['epic_from_name']:,} EPIC moved from elector_name")
+    print(f"  {fixes['epic_from_rname']:,} EPIC moved from relation_name")
+    print(f"  {fixes['header_dropped']:,} header junk rows dropped")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Extract Meghalaya SIR PDFs to CSV")
     ap.add_argument("--ac", default=None, help="AC numbers, comma-separated")
     ap.add_argument("--limit", type=int, default=None, help="process first N ACs")
     ap.add_argument("--out-dir", default="output/csv/meghalaya")
     ap.add_argument("--combined", action="store_true", help="single CSV for state")
+    ap.add_argument("--postprocess", metavar="CSV", default=None,
+                    help="post-process an existing CSV to fix column bleeding")
     args = ap.parse_args()
+
+    if args.postprocess:
+        _postprocess(args.postprocess)
+        return
 
     raw_dir = os.path.join("data", "raw", STATE_ID)
     os.makedirs(args.out_dir, exist_ok=True)
@@ -297,7 +550,7 @@ def main():
 
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)

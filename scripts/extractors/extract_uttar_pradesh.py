@@ -22,6 +22,7 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "uttar_pradesh"
+ROLL_YEAR = 2003
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 ROW_TOL = 5.0
@@ -29,6 +30,7 @@ CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 # Column indices inside a row (0-based, after serial_no is cells[0])
@@ -306,7 +308,7 @@ def main():
 
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)

@@ -26,12 +26,14 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "bihar"
+ROLL_YEAR = 2003
 CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "section_no",
     "first_name", "last_name", "elector_name",
     "relation", "relation_first_name", "relation_last_name", "relation_name",
     "epic_no", "sex", "age",
+    "roll_year",
 ]
 
 
@@ -129,6 +131,7 @@ def main():
                         row[10],  # epic/idcard
                         row[12],  # sex
                         age,
+                        ROLL_YEAR,
                     ]
                     ac_rows.append(full_row)
 

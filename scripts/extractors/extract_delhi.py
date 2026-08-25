@@ -13,6 +13,7 @@ Usage:
     python scripts/extract_delhi.py --ac 1,2,3         # specific ACs
     python scripts/extract_delhi.py --limit 5          # first 5 ACs
     python scripts/extract_delhi.py --combined         # single CSV for state
+    python scripts/extract_delhi.py --postprocess path/to/delhi_combined.csv
 """
 import argparse
 import csv
@@ -25,6 +26,7 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "delhi"
+ROLL_YEAR = 2002
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 RELATION_CODES = {"F", "H", "M", "O", "W"}
@@ -33,6 +35,7 @@ CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 
@@ -295,6 +298,62 @@ def _fix_row(row):
     return row
 
 
+# ── CSV post-processing ──────────────────────────────────────────────────
+
+VALID_SEX = {"M", "F", ""}
+VALID_RELATION = {"F", "H", "M", "O", "W", "f", "h", ""}
+
+
+def _postprocess(csv_path):
+    """Fix column-bleeding issues in an already-extracted CSV.
+
+    Delhi-specific fixes:
+    1. Sex column has name-initial prefix before F/M (e.g. "K M", "B F",
+       "JA M") — extract last token as sex, prepend rest to elector_name.
+    2. Sex column has age prefix (e.g. "27 F") — extract F, ignore the
+       number (age column already has it).
+    """
+    import tempfile, shutil
+
+    fixes = {"sex_cleaned": 0, "total": 0}
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8",
+                                      dir=os.path.dirname(csv_path),
+                                      suffix=".csv", delete=False)
+    try:
+        with open(csv_path, encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            for row in reader:
+                fixes["total"] += 1
+                sex = row["sex"].strip()
+                if sex not in VALID_SEX:
+                    parts = sex.split()
+                    last = parts[-1] if parts else ""
+                    if last in ("M", "F"):
+                        prefix = " ".join(parts[:-1])
+                        # Prepend non-numeric prefix to elector_name
+                        if prefix and not prefix.replace(" ", "").isdigit():
+                            row["elector_name"] = (prefix + " " + row["elector_name"]).strip()
+                        row["sex"] = last
+                        fixes["sex_cleaned"] += 1
+                    else:
+                        row["sex"] = ""
+                        fixes["sex_cleaned"] += 1
+                writer.writerow(row)
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Postprocess {csv_path}:")
+    print(f"  {fixes['total']:,} rows processed")
+    print(f"  {fixes['sex_cleaned']} sex values fixed")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────
 
 
@@ -304,7 +363,13 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="process first N ACs")
     ap.add_argument("--out-dir", default="output/csv/delhi")
     ap.add_argument("--combined", action="store_true", help="single CSV for state")
+    ap.add_argument("--postprocess", metavar="CSV", default=None,
+                    help="post-process an existing CSV to fix column bleeding")
     args = ap.parse_args()
+
+    if args.postprocess:
+        _postprocess(args.postprocess)
+        return
 
     raw_dir = os.path.join("data", "raw", STATE_ID)
     os.makedirs(args.out_dir, exist_ok=True)
@@ -332,7 +397,7 @@ def main():
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
         rows = [_fix_row(r) for r in rows]
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)

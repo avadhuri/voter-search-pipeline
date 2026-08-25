@@ -12,10 +12,12 @@ import argparse, csv, io, json, os, re, zipfile
 import pdfplumber
 
 STATE_ID = "maharashtra"
+ROLL_YEAR = 2002
 CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 
@@ -82,6 +84,7 @@ def main():
                     ac_rows.append([
                         STATE_ID, district, ac_no, ac_name, part_no,
                         r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
+                        ROLL_YEAR,
                     ])
 
         if args.combined:

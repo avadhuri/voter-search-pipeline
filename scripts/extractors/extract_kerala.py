@@ -16,12 +16,14 @@ import argparse, csv, io, json, os, re, zipfile
 import pdfplumber
 
 STATE_ID = "kerala"
+ROLL_YEAR = 2002
 CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "section_code",
     "first_name", "last_name", "elector_name",
     "relation", "rel_first_name", "rel_last_name", "relation_name",
     "epic_no", "sex", "age", "house_name",
+    "roll_year",
 ]
 
 
@@ -102,6 +104,7 @@ def main():
                         row[12] if len(row) > 12 else "",
                         row[13] if len(row) > 13 else "",
                         house_name,
+                        ROLL_YEAR,
                     ])
 
         if args.combined:

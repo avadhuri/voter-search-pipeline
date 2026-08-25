@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-vision build-db build-db-ac check-servable decoder-oracle wb-ocr-figures sample-names push-ac-db-dev roll-years migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-vision split-csv build-db build-db-ac check-servable decoder-oracle wb-ocr-figures sample-names push-ac-db-dev roll-years migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -92,6 +92,17 @@ ifdef AC
 	$(PY) -m download_haryana --ac $(AC) --out-dir $(HR_RAW_DIR)
 else
 	$(PY) -m download_haryana --ac $(HR_DEMO_ACS) --out-dir $(HR_RAW_DIR)
+endif
+
+# `make split-csv STATE=lakshadweep` splits one state's combined CSV into
+# per-AC files under csv_output/<state>/per_ac/. `make split-csv` (no args)
+# splits all states that have a combined CSV. Required before build-db-ac
+# for CSV-based states.
+split-csv: ## Split combined CSVs into per-AC files (STATE= for one state, default all)
+ifdef STATE
+	$(PY) scripts/split_csv.py --state $(STATE)
+else
+	$(PY) scripts/split_csv.py --all
 endif
 
 # `make build-db AC=A085` builds a single-AC DB (data/db/A085.sqlite).

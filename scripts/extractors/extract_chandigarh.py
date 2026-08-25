@@ -9,6 +9,7 @@ Usage:
     python scripts/extractors/extract_chandigarh.py --ac 1,2,3         # specific ACs
     python scripts/extractors/extract_chandigarh.py --limit 5          # first 5 ACs
     python scripts/extractors/extract_chandigarh.py --combined         # single CSV for state
+    python scripts/extractors/extract_chandigarh.py --postprocess path/to/chandigarh_combined.csv
 """
 import argparse
 import csv
@@ -16,11 +17,13 @@ import io
 import json
 import os
 import re
+import unicodedata
 import zipfile
 
 import pdfplumber
 
 STATE_ID = "chandigarh"
+ROLL_YEAR = 2002
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 FALLBACK_CENTRES = {1: 59, 2: 87, 3: 165, 4: 256, 5: 305, 6: 395, 7: 425, 8: 497}
@@ -29,6 +32,7 @@ CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 # Column indices inside an 8-cell row (0-based)
@@ -36,6 +40,95 @@ _SERIAL = 0
 _HOUSE = 1
 _NAME = 2
 _REL = 3
+
+
+# ── DVTTSurekh → Unicode Devanagari transcoder ──────────────────────────
+# DVTTSurekh uses the same byte-to-glyph encoding as DK-RAJ (Haryana).
+# Consonants are stored as half forms (C + virama); a stem glyph (mapped
+# to ा) completes them.  Pre-base ि is typed before its cluster and
+# must be reordered.  See states/haryana_dkraj.py for full documentation.
+
+_REPHA = '\ue000'
+_REPHA_DONE = '\ue001'
+_IREPHA = '\ue002'
+_I_PLACED = '\ue003'
+
+_MAP = {
+    ' ': ' ', '!': '!', '(': '(', ')': ')', ',': ',', '-': '-', '.': '.', '/': '/',
+    ':': ':', ';': ';', '?': '?', '&': 'ः', '%': 'ऽ', '$': 'ॐ', "'": ',',
+    '*': 'ा', '+': 'अ', '<': 'इ', '=': 'उ', '>': 'ऊ',
+    '@': 'ऋ', 'A': 'ॠ', 'B': 'ए',
+    **{c: c for c in '0123456789'},
+    'C': 'क्', 'E': 'क्', 'F': 'क़्',
+    'G': 'क्र्', 'H': 'क्त्', 'I': 'क्ष्',
+    'J': 'ख्', 'K': 'ख़्', 'L': 'ख़्', 'M': 'ग्', 'N': 'ग़्',
+    'O': 'ग्र्', 'P': 'घ्', 'Q': 'घ़्',
+    'S': 'च्', 'U': 'छ्', 'V': 'ज्', 'W': 'ज़्',
+    'Y': 'ज्ञ्', 'Z': 'झ्',
+    ']': 'ट्', '`': 'ठ्', 'b': 'ड्', 'c': 'ड़्',
+    'f': 'ढ्', 'g': 'ढ़्', 'h': 'ण्',
+    'i': 'त्', 'j': 'त्र्', 'k': 'त्त्',
+    'l': 'थ्', 'n': 'द्', 'o': 'द्र्',
+    'p': 'द्र्', 'q': 'द्द्', 'r': 'द्ध्', 's': 'ब्र्',
+    't': 'द्य्', 'u': 'द्व्',
+    'v': 'ध्', 'x': 'न्', 'z': 'न्न्',
+    '{': 'प्', '|': 'प्र्', '}': 'फ्',
+    '\xa1': 'फ्', '\xa2': 'फ़्', '\xa3': 'फ्र्',
+    '\xa4': 'ब्', '\xa5': 'ब्र्', '\xa6': 'भ्', '\xa8': 'म्',
+    '\xaa': 'य्', '\xae': 'र', '\xaf': 'र', '\xb0': 'र',
+    '\xb1': 'ल्', '\xb4': 'व्',
+    '\xb6': 'श्', '\xb7': 'श्व्', '\xb8': 'श्र्', '\xb9': 'ष्',
+    '\xba': 'स्', '\xbb': 'स्र्', '\xbd': 'ह्',
+    '\xc0': 'ह्म्',
+    '\xc2': '्', '\xc3': '', '\xc4': 'ँ', '\xc5': 'ँ', '\xc6': 'ं',
+    '\xc7': _REPHA, '\xc8': _REPHA,
+    '\xc9': 'ा', '\xca': 'ि', '\xcb': 'िं', '\xcc': _IREPHA,
+    '\xcd': 'िं', '\xce': 'ि', '\xcf': 'िं',
+    '\xd2': 'ी', '\xd3': 'ीं', '\xd4': 'ी' + _REPHA,
+    '\xd0': 'ू', '\xd6': 'ु', '\xd9': 'ु', '\xda': 'ू', '\xde': 'ृ',
+    '\xe0': 'े', '\xe4': 'े', '\xe5': 'ें', '\xe6': 'े' + _REPHA,
+    '\xe7': 'ें' + _REPHA, '\xe8': 'ै', '\xe9': 'ैं',
+    '\xea': 'ै' + _REPHA, '\xeb': 'ं' + _REPHA, '\xec': 'ॉ',
+    '\xf0': '', '\xf1': '',
+    '\xf2': 'ा', '\xf3': 'ा', '\xf4': 'ा', '\xf5': 'ा', '\xf6': 'ा',
+    '\xf7': 'ा', '\xf8': 'ा', '\xf9': 'ा', '\xfa': '',
+    '\xfb': 'ा', '\xfc': 'ू', '\xfe': 'ा',
+}
+
+_CONS = '[\u0915-\u0939\u0958-\u0961]'
+_CLUSTER = '(?:' + _CONS + '्)*' + _CONS
+_MATRAS = '[\u093E-\u094C\u0902\u0903\u0901\u0943]'
+_INNER = '[\u093F-\u094C\u0902\u0903\u0901\u0943]'
+_AA = 'ा'
+_VIRAMA = '्'
+
+
+def _dvtt_decode(s):
+    """Transcode a DVTTSurekh string to Unicode Devanagari."""
+    out = []
+    for ch in s:
+        if ch in _MAP:
+            out.append(_MAP[ch])
+        elif ch.isascii() and (ch.isdigit() or ch.isalpha() or ch in '()[]{}/.,:;-'):
+            out.append(ch)
+        else:
+            out.append('�')
+    t = ''.join(out)
+    t = re.sub(_VIRAMA + '(' + _INNER + '*)' + _REPHA, _VIRAMA + _REPHA + r'\1', t)
+    t = re.sub('(' + _CONS + ')' + _VIRAMA + _REPHA + '(' + _INNER + '*?)' + _AA,
+               _REPHA_DONE + r'\1\2', t)
+    t = re.sub(_VIRAMA + '(' + _INNER + '*?)' + _AA, r'\1', t)
+    for a, b in (('ाे', 'ो'), ('ाै', 'ौ'), ('ाॉ', 'ॉ'),
+                 ('अा', 'आ'), ('अो', 'ओ'), ('अौ', 'औ'),
+                 ('अे', 'ए'), ('अै', 'ऐ')):
+        t = t.replace(a, b)
+    t = re.sub(_IREPHA + '(' + _CLUSTER + ')', _REPHA_DONE + r'\1' + _I_PLACED, t)
+    t = re.sub('िं(' + _CLUSTER + ')', r'\1िं', t)
+    t = re.sub('ि(' + _CLUSTER + ')', r'\1ि', t)
+    t = re.sub('(' + _CLUSTER + ')(' + _MATRAS + '*)' + _REPHA, _REPHA_DONE + r'\1\2', t)
+    t = t.replace('\u0907' + _REPHA, 'ई')
+    t = t.replace(_REPHA_DONE, 'र्').replace(_REPHA, 'र्').replace(_I_PLACED, 'ि')
+    return unicodedata.normalize('NFC', t)
 
 
 # -- PDF extraction helpers ---------------------------------------------------
@@ -172,32 +265,24 @@ def _find_col_row_top(words, col_centres):
 def _fix_row(row):
     """Post-process an 8-cell row to fix common mis-assignments.
 
-    - Purely alphabetic house_no moved to elector_name
-    - Trailing alpha words in house_no moved to elector_name
-    - Relation code (F/H/M/O/W) stuck at end of elector_name moved to relation
+    DVTTSurekh text is non-ASCII, so "alphabetic" checks must look for
+    absence of digits rather than ASCII letters.
     """
     house = row[_HOUSE].strip()
     name = row[_NAME].strip()
     rel = row[_REL].strip()
 
-    # Purely alphabetic house_no -> belongs in elector_name
-    if house and re.fullmatch(r"[A-Za-z ]+", house):
+    # House_no with NO digits at all -> it's a name fragment, not a house number
+    if house and not re.search(r"\d", house):
         name = f"{house} {name}".strip()
         house = ""
 
-    # Trailing alpha words in house_no -> move to elector_name
+    # Trailing non-digit text after a digit-based house number -> name fragment
     if house:
-        m = re.match(r"^(.*?\d[\d/\-]*)(\s+[A-Za-z][\w ]*?)$", house)
+        m = re.match(r"^(.*?\d[\d/\-]*)\s+(\S.*)$", house)
         if m:
             house = m.group(1).strip()
             name = f"{m.group(2).strip()} {name}".strip()
-
-    # Relation code stuck at end of elector_name
-    if not rel:
-        m = re.match(r"^(.*?)\s+([FHMOW])$", name)
-        if m:
-            name = m.group(1).strip()
-            rel = m.group(2)
 
     row[_HOUSE] = house
     row[_NAME] = name
@@ -223,6 +308,9 @@ def _extract_page(page, fallback_centres=None):
         if serial and re.fullmatch(r"\d+", serial):
             cells = (cells + [""] * N_COLS)[:N_COLS]
             _fix_row(cells)
+            # Decode DVTTSurekh text to Unicode Devanagari (skip serial, age, epic)
+            for idx in (_HOUSE, _NAME, _REL, 4, 5):
+                cells[idx] = _dvtt_decode(cells[idx])
             records.append(cells)
     return records, col_centres
 
@@ -262,6 +350,216 @@ def _load_meta():
         return json.load(f)
 
 
+# -- CSV post-processing -------------------------------------------------------
+
+VALID_SEX = {"पु.", "म.", ""}
+VALID_RELATION = {"पि", "प", "मा", ""}
+
+
+def _postprocess(csv_path):
+    """Fix column-bleeding issues in an already-extracted CSV.
+
+    Chandigarh-specific fixes:
+    1. Sex has city name ("चन्डीगढ़", "च्:ान्डीगढ़") — these are header/
+       metadata rows (name is a location), drop them entirely.
+    2. Sex "ति पु." — trim to "पु.".
+    3. Relation has name prefix before valid code ("सिंह् पि", "अंसार प",
+       "व प", "� पि") — extract the valid suffix, prepend rest to elector_name.
+    """
+    import tempfile, shutil
+
+    fixes = {"dropped": 0, "sex_cleaned": 0, "rel_cleaned": 0, "total": 0}
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8",
+                                      dir=os.path.dirname(csv_path),
+                                      suffix=".csv", delete=False)
+    try:
+        with open(csv_path, encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            for row in reader:
+                fixes["total"] += 1
+                sex = row["sex"].strip()
+                rel = row["relation"].strip()
+
+                # Drop metadata rows with city name in sex column
+                if "चन्डीगढ़" in sex or "ान्डीगढ़" in sex:
+                    fixes["dropped"] += 1
+                    continue
+
+                # Fix sex prefix bleed
+                if sex not in VALID_SEX:
+                    for valid in ("पु.", "म."):
+                        if sex.endswith(valid):
+                            row["sex"] = valid
+                            fixes["sex_cleaned"] += 1
+                            break
+                    else:
+                        row["sex"] = ""
+                        fixes["sex_cleaned"] += 1
+
+                # Fix relation prefix bleed
+                if rel not in VALID_RELATION:
+                    for valid in ("पि", "प", "मा"):
+                        if rel.endswith(valid):
+                            prefix = rel[:-len(valid)].strip()
+                            if prefix and prefix != "�":
+                                row["elector_name"] = (row["elector_name"].strip() + " " + prefix).strip()
+                            row["relation"] = valid
+                            fixes["rel_cleaned"] += 1
+                            break
+                    else:
+                        row["relation"] = ""
+                        fixes["rel_cleaned"] += 1
+
+                writer.writerow(row)
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Postprocess {csv_path}:")
+    print(f"  {fixes['total']:,} rows processed")
+    print(f"  {fixes['dropped']} metadata rows dropped")
+    print(f"  {fixes['sex_cleaned']} sex values fixed")
+    print(f"  {fixes['rel_cleaned']} relation values fixed")
+
+
+# -- Hindi transliteration (Devanagari → English) -----------------------------
+
+_RELATION_EN_MAP = {
+    'पिता': 'Father', 'पि.': 'Father', 'पि-': 'Father', 'पि': 'Father',
+    'पति': 'Husband', 'प.': 'Husband', 'प-': 'Husband', 'प': 'Husband',
+    'माता': 'Mother', 'मा.': 'Mother', 'मा-': 'Mother', 'मा': 'Mother',
+    'अन्य': 'Other', 'अ-': 'Other', 'अ.': 'Other', 'अ': 'Other',
+}
+
+_SEX_EN_MAP = {
+    'पु.': 'M', 'पुरुष': 'M', 'पुरूष': 'M', 'पु-': 'M', 'M': 'M',
+    'म.': 'F', 'महिला': 'F', 'स्त्री': 'F', 'म-': 'F', 'F': 'F',
+}
+
+
+def _transliterate_hindi(text):
+    """Transliterate Devanagari text to readable English (Title Case)."""
+    from indic_transliteration import sanscript
+    from indic_transliteration.sanscript import transliterate as _translit
+
+    if not text or not text.strip():
+        return ''
+    itrans = _translit(text.strip(), sanscript.DEVANAGARI, sanscript.ITRANS)
+
+    result = itrans
+    result = result.replace('j~n', 'gy')
+    result = result.replace('~n', 'n')
+    result = result.replace('.n', 'n')
+    result = result.replace('.N', 'n')
+    result = result.replace('RRi', 'ri').replace('R^i', 'ri')
+    result = result.replace('.Dh', 'dh').replace('.D', 'd')
+
+    # anusvara before h -> ngh (सिंह -> singh), else -> n
+    result = re.sub(r'Mh', 'ngh', result)
+    result = result.replace('M', 'n')
+
+    result = result.replace('Sh', 'sh')
+    result = result.replace('Ch', 'chh')
+    result = result.replace('shh', 'sh')
+    result = result.replace('T', 't')
+    result = result.replace('D', 'd')
+    result = result.replace('N', 'n')
+    result = result.replace('H', 'h')
+
+    # Long vowels: mark long-A so schwa deletion skips it
+    MARKER = '\x01'
+    result = result.replace('A', MARKER)
+    result = result.replace('I', 'i')
+    result = result.replace('U', 'u')
+    result = result.replace('a' + MARKER, MARKER)
+
+    # Schwa deletion: drop trailing inherent 'a' (unmarked) from words
+    words = result.split()
+    cleaned = []
+    for w in words:
+        if len(w) > 2 and w.endswith('a') and not w.endswith(MARKER):
+            if w[-2] not in 'aeiou' + MARKER:
+                w = w[:-1]
+        cleaned.append(w)
+
+    result = ' '.join(cleaned)
+    result = result.replace(MARKER, 'a')
+    return result.title()
+
+
+def _transliterate_csv(csv_path):
+    """Add elector_name_en, relation_name_en, relation_type_en, sex_en columns.
+
+    Uses a two-pass streaming approach to avoid loading all rows into memory
+    (critical for states with 30M+ rows like Rajasthan/MP).
+    """
+    import shutil
+    import tempfile
+
+    NEW_COLS = ['elector_name_en', 'relation_name_en', 'relation_type_en', 'sex_en']
+
+    # Pass 1: read header and collect unique names (not full rows)
+    with open(csv_path, encoding='utf-8') as fh:
+        reader = csv.DictReader(fh)
+        if any(c in reader.fieldnames for c in NEW_COLS):
+            print(f"  Columns already present, skipping: {csv_path}")
+            return
+        out_fields = list(reader.fieldnames) + NEW_COLS
+
+        names = set()
+        total = 0
+        for row in reader:
+            names.add(row.get('elector_name', ''))
+            names.add(row.get('relation_name', ''))
+            total += 1
+    names.discard('')
+
+    print(f"  Pass 1: {total:,} rows, {len(names):,} unique names")
+    print(f"  Transliterating...", end=' ', flush=True)
+    cache = {'': ''}
+    for n in names:
+        cache[n] = _transliterate_hindi(n)
+    del names  # free memory
+    print("done")
+
+    # Pass 2: stream rows, add transliterated columns, write to temp file
+    tmp = tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8',
+                                      dir=os.path.dirname(csv_path),
+                                      suffix='.csv', delete=False)
+    try:
+        empty_name = 0
+        with open(csv_path, encoding='utf-8') as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=out_fields)
+            writer.writeheader()
+            for row in reader:
+                en = cache.get(row.get('elector_name', ''), '')
+                row['elector_name_en'] = en
+                row['relation_name_en'] = cache.get(row.get('relation_name', ''), '')
+                rel = row.get('relation', '').strip()
+                row['relation_type_en'] = _RELATION_EN_MAP.get(rel, '')
+                sex = row.get('sex', '').strip()
+                row['sex_en'] = _SEX_EN_MAP.get(sex, '')
+                writer.writerow(row)
+                if not en:
+                    empty_name += 1
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"  {total:,} rows, {len(cache)-1:,} unique names transliterated")
+    print(f"  Empty elector_name_en: {empty_name:,} ({100*empty_name/max(total,1):.1f}%)")
+
+
 # -- Main ----------------------------------------------------------------------
 
 
@@ -271,7 +569,19 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="process first N ACs")
     ap.add_argument("--out-dir", default="output/csv/chandigarh")
     ap.add_argument("--combined", action="store_true", help="single CSV for state")
+    ap.add_argument("--postprocess", metavar="CSV", default=None,
+                    help="post-process an existing CSV to fix column bleeding")
+    ap.add_argument("--transliterate", metavar="CSV", default=None,
+                    help="add English transliteration columns to an existing CSV")
     args = ap.parse_args()
+
+    if args.transliterate:
+        _transliterate_csv(args.transliterate)
+        return
+
+    if args.postprocess:
+        _postprocess(args.postprocess)
+        return
 
     raw_dir = os.path.join("data", "raw", STATE_ID)
     os.makedirs(args.out_dir, exist_ok=True)
@@ -298,7 +608,7 @@ def main():
 
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)

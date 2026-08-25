@@ -10,6 +10,7 @@ Usage:
     python scripts/extract_goa.py --ac 1,2,3         # specific ACs
     python scripts/extract_goa.py --limit 5          # first 5 ACs
     python scripts/extract_goa.py --combined         # single CSV for state
+    python scripts/extract_goa.py --postprocess path/to/goa_combined.csv
 """
 import argparse
 import csv
@@ -22,6 +23,7 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "goa"
+ROLL_YEAR = 2002
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 ROW_TOL = 5.0
@@ -29,6 +31,7 @@ CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 
@@ -222,13 +225,120 @@ def _load_meta():
 # ── Main ─────────────────────────────────────────────────────────────────
 
 
+# ── CSV post-processing ──────────────────────────────────────────────────
+
+VALID_SEX = {"M", "F", ""}
+VALID_RELATION = {"F", "H", "M", "O", ""}
+
+
+def _postprocess(csv_path):
+    """Fix column-bleeding issues in an already-extracted CSV.
+
+    Goa-specific fixes:
+    1. Sex column has name bleed — two patterns:
+       a. Space-separated: "Xavier F" → last token is sex, prepend rest to name
+       b. Concatenated: "FranciscoM", "KandradF" → ends with F/M, split off
+    2. Relation column has underscore separator lines with F/H/O appended
+       ("________...________ F") → extract last char as relation.
+    3. Relation column has name prefix bleed ("Sebastiao F") → extract last
+       token as relation, prepend rest to elector_name.
+    """
+    import tempfile, shutil
+
+    fixes = {"sex_cleaned": 0, "rel_cleaned": 0, "total": 0}
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8",
+                                      dir=os.path.dirname(csv_path),
+                                      suffix=".csv", delete=False)
+    try:
+        with open(csv_path, encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            for row in reader:
+                fixes["total"] += 1
+                sex = row["sex"].strip()
+                rel = row["relation"].strip()
+
+                # Fix sex column
+                if sex not in VALID_SEX:
+                    parts = sex.split()
+                    last = parts[-1] if parts else ""
+                    if last in ("F", "M"):
+                        # Space-separated: "Xavier F" → prepend "Xavier" to name
+                        prefix = " ".join(parts[:-1])
+                        if prefix:
+                            row["elector_name"] = (row["elector_name"].strip() + " " + prefix).strip()
+                        row["sex"] = last
+                        fixes["sex_cleaned"] += 1
+                    elif sex.endswith("F") or sex.endswith("M"):
+                        # Concatenated: "FranciscoM" → split last char
+                        prefix = sex[:-1]
+                        row["elector_name"] = (row["elector_name"].strip() + " " + prefix).strip()
+                        row["sex"] = sex[-1]
+                        fixes["sex_cleaned"] += 1
+                    else:
+                        row["sex"] = ""
+                        fixes["sex_cleaned"] += 1
+
+                # Fix relation column
+                if rel not in VALID_RELATION:
+                    # Underscore lines: "____..._____ F" → extract last char
+                    if "_" in rel:
+                        parts = rel.split()
+                        last = parts[-1] if parts else ""
+                        if last in ("F", "H", "M", "O"):
+                            row["relation"] = last
+                        else:
+                            row["relation"] = ""
+                        fixes["rel_cleaned"] += 1
+                    else:
+                        # Name prefix bleed: "Sebastiao F" → extract last token
+                        parts = rel.split()
+                        last = parts[-1] if parts else ""
+                        if last in ("F", "H", "M", "O"):
+                            prefix = " ".join(parts[:-1])
+                            if prefix:
+                                row["elector_name"] = (row["elector_name"].strip() + " " + prefix).strip()
+                            row["relation"] = last
+                            fixes["rel_cleaned"] += 1
+                        elif rel.endswith(("F", "H")):
+                            prefix = rel[:-1]
+                            if prefix:
+                                row["elector_name"] = (row["elector_name"].strip() + " " + prefix).strip()
+                            row["relation"] = rel[-1]
+                            fixes["rel_cleaned"] += 1
+                        else:
+                            row["relation"] = ""
+                            fixes["rel_cleaned"] += 1
+
+                writer.writerow(row)
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Postprocess {csv_path}:")
+    print(f"  {fixes['total']:,} rows processed")
+    print(f"  {fixes['sex_cleaned']} sex values fixed")
+    print(f"  {fixes['rel_cleaned']} relation values fixed")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Extract Goa SIR PDFs to CSV")
     ap.add_argument("--ac", default=None, help="AC numbers, comma-separated")
     ap.add_argument("--limit", type=int, default=None, help="process first N ACs")
     ap.add_argument("--out-dir", default="output/csv/goa")
     ap.add_argument("--combined", action="store_true", help="single CSV for state")
+    ap.add_argument("--postprocess", metavar="CSV", default=None,
+                    help="post-process an existing CSV to fix column bleeding")
     args = ap.parse_args()
+
+    if args.postprocess:
+        _postprocess(args.postprocess)
+        return
 
     raw_dir = os.path.join("data", "raw", STATE_ID)
     os.makedirs(args.out_dir, exist_ok=True)
@@ -255,7 +365,7 @@ def main():
 
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)

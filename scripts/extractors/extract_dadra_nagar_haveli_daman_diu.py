@@ -7,9 +7,21 @@ PDF layout: 8 columns
 
 EPIC prefix (e.g. DD/01/000/) appears on each data page header.
 
+AC1 (Daman & Diu): English text PDFs — extracts cleanly.
+AC2 (Dadra & Nagar Haveli): Scanned PDFs with an invisible-text OCR overlay
+  in an unknown legacy Gujarati font (labelled "Helvetica" in the PDF but
+  actually rendering Gujarati glyphs via unidentified ASCII→Gujarati mapping).
+  82 of 125 parts are pure scans with no text layer at all; the 43 parts that
+  have an OCR layer produce garbled ASCII (e.g. "iort lrt", "{rdgorld") because
+  the font's ToUnicode CMap is missing and the encoding doesn't match any of
+  the 94+ known Gujarati legacy fonts (LMG Arun, Harikrishna, Sulekh, EKLG,
+  Gopika, Saral, etc.).  AC2 is skipped by default; pass --ac 2 to force
+  extraction of the raw (garbled) text if needed for research.
+
 Usage:
     python scripts/extract_dadra_nagar_haveli_daman_diu.py
-    python scripts/extract_dadra_nagar_haveli_daman_diu.py --ac 1,2
+    python scripts/extract_dadra_nagar_haveli_daman_diu.py --ac 1
+    python scripts/extract_dadra_nagar_haveli_daman_diu.py --ac 1,2   # includes garbled AC2
     python scripts/extract_dadra_nagar_haveli_daman_diu.py --combined
 """
 import argparse
@@ -23,14 +35,31 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "dadra_nagar_haveli_daman_diu"
+ROLL_YEAR = 2002
+# AC2 (Dadra & Nagar Haveli) uses an undecodable legacy Gujarati font —
+# scanned PDFs with invisible OCR text in an unknown encoding.  Skip by default.
+SKIP_ACS = {2}
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 RELATION_CODES = {"F", "H", "M", "O", "W"}
 ROW_TOL = 5.0
+# AC001 data positions don't match column header positions —
+# headers are right-shifted vs actual data.  These centres are
+# measured from real data rows (see word x-positions in AC001 part 11).
+# Measured from real data rows in AC001.  Serial at x≈55, house at x≈65,
+# name at x≈142+, relation code at x≈327, rel-name at x≈339+, sex at x≈486,
+# age at x≈504, EPIC at x≈546-550.
+FALLBACK_CENTRES = {1: 55, 2: 80, 3: 200, 4: 327, 5: 380, 6: 486, 7: 504, 8: 550}
+# Serial and house_no are only 10px apart, so auto-boundaries don't work.
+FALLBACK_BOUNDARIES = {
+    1: (0, 62), 2: (62, 135), 3: (135, 310), 4: (310, 335),
+    5: (335, 470), 6: (470, 495), 7: (495, 525), 8: (525, 9999),
+}
 CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 
@@ -174,11 +203,11 @@ def _extract_page(page, fallback_centres=None, fallback_prefix=None):
     words = page.extract_words()
     if not words:
         return [], fallback_centres, fallback_prefix
-    col_centres = _find_column_row(words) or fallback_centres
+    col_centres = FALLBACK_CENTRES
     if col_centres is None:
         return [], None, fallback_prefix
     epic_prefix = _find_epic_prefix(words) or fallback_prefix
-    boundaries = _make_boundaries(col_centres)
+    boundaries = FALLBACK_BOUNDARIES
     col_row_top = _find_col_row_top(words, col_centres)
     data_words = [w for w in words if w["top"] > col_row_top + ROW_TOL]
     # Exclude EPIC prefix from data words
@@ -287,13 +316,86 @@ def _fix_row(row):
 # ── Main ─────────────────────────────────────────────────────────────────
 
 
+# ── CSV post-processing ──────────────────────────────────────────────────
+
+VALID_SEX = {"M", "F", ""}
+VALID_RELATION = {"F", "H", "M", "O", ""}
+_OCR_JUNK = set(".,;:'\"•■·-!?|/\\()[]{}<>` \t")
+
+
+def _postprocess(csv_path):
+    """Fix column-bleeding issues in an already-extracted CSV.
+
+    D&NH-specific fixes (OCR'd scanned PDFs, heavy noise):
+    1. Sex column has EPIC numbers, ages, OCR garbage bleeding in.
+       Try to extract F/M by stripping junk; else clear to empty.
+    2. Relation column has OCR garbage. Try to extract F/H/M/O; else clear.
+    """
+    import tempfile, shutil
+
+    fixes = {"sex_cleaned": 0, "rel_cleaned": 0, "total": 0}
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8",
+                                      dir=os.path.dirname(csv_path),
+                                      suffix=".csv", delete=False)
+    try:
+        with open(csv_path, encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            for row in reader:
+                fixes["total"] += 1
+                sex = row["sex"].strip()
+                rel = row["relation"].strip()
+
+                if sex not in VALID_SEX:
+                    # Try to find F or M in the noise
+                    stripped = "".join(c for c in sex if c not in _OCR_JUNK and not c.isdigit())
+                    if stripped in ("F", "M"):
+                        row["sex"] = stripped
+                    elif "F" in sex.split() or sex.endswith(" F"):
+                        row["sex"] = "F"
+                    elif "M" in sex.split() or sex.endswith(" M"):
+                        row["sex"] = "M"
+                    else:
+                        row["sex"] = ""
+                    fixes["sex_cleaned"] += 1
+
+                if rel not in VALID_RELATION:
+                    stripped = "".join(c for c in rel if c not in _OCR_JUNK and not c.isdigit())
+                    if stripped in ("F", "H", "M", "O"):
+                        row["relation"] = stripped
+                    else:
+                        row["relation"] = ""
+                    fixes["rel_cleaned"] += 1
+
+                writer.writerow(row)
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Postprocess {csv_path}:")
+    print(f"  {fixes['total']:,} rows processed")
+    print(f"  {fixes['sex_cleaned']} sex values fixed")
+    print(f"  {fixes['rel_cleaned']} relation values fixed")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Extract D&NH SIR PDFs to CSV")
     ap.add_argument("--ac", default=None, help="AC numbers, comma-separated")
     ap.add_argument("--limit", type=int, default=None, help="process first N ACs")
     ap.add_argument("--out-dir", default="output/csv/dadra_nagar_haveli_daman_diu")
     ap.add_argument("--combined", action="store_true", help="single CSV for state")
+    ap.add_argument("--postprocess", metavar="CSV", default=None,
+                    help="post-process an existing CSV to fix column bleeding")
     args = ap.parse_args()
+
+    if args.postprocess:
+        _postprocess(args.postprocess)
+        return
 
     raw_dir = os.path.join("data", "raw", STATE_ID)
     os.makedirs(args.out_dir, exist_ok=True)
@@ -305,6 +407,21 @@ def main():
     if args.ac:
         wanted = set(int(x) for x in args.ac.split(","))
         zip_files = [f for f in zip_files if int(re.search(r"\d+", f).group()) in wanted]
+    else:
+        # Skip ACs with undecodable legacy fonts unless explicitly requested
+        skipped = []
+        kept = []
+        for f in zip_files:
+            ac = int(re.search(r"\d+", f).group())
+            if ac in SKIP_ACS:
+                skipped.append(f)
+            else:
+                kept.append(f)
+        if skipped:
+            print(f"{STATE_ID}: skipping {len(skipped)} AC(s) with undecodable "
+                  f"Gujarati font: {', '.join(skipped)}")
+            print("  (pass --ac 2 to force extraction of garbled text)")
+        zip_files = kept
     if args.limit:
         zip_files = zip_files[:args.limit]
 
@@ -321,7 +438,7 @@ def main():
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
         rows = [_fix_row(r) for r in rows]
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)

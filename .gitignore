@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 data/
 output/
+csv_output/
+run_overnight.sh
+extraction_log.txt
 *.log
 .DS_Store
 .pytest_cache/

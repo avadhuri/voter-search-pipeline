@@ -22,6 +22,7 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "nagaland"
+ROLL_YEAR = 2005
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 ROW_TOL = 5.0
@@ -29,6 +30,7 @@ CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 
@@ -222,13 +224,71 @@ def _load_meta():
 # ── Main ─────────────────────────────────────────────────────────────────
 
 
+# ── CSV post-processing ──────────────────────────────────────────────────
+
+VALID_SEX = {"M", "F", ""}
+VALID_RELATION = {"F", "H", "M", "O", ""}
+
+
+def _postprocess(csv_path):
+    """Fix column-bleeding issues in an already-extracted CSV.
+
+    Nagaland-specific fixes:
+    1. Relation column has OCR misreads (N, B, S, L, G, D, I, 1, -)
+       → clear to empty.
+    """
+    import tempfile, shutil
+
+    fixes = {"sex_cleaned": 0, "rel_cleaned": 0, "total": 0}
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8",
+                                      dir=os.path.dirname(csv_path),
+                                      suffix=".csv", delete=False)
+    try:
+        with open(csv_path, encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            for row in reader:
+                fixes["total"] += 1
+                sex = row["sex"].strip()
+                rel = row["relation"].strip()
+
+                if sex not in VALID_SEX:
+                    row["sex"] = ""
+                    fixes["sex_cleaned"] += 1
+
+                if rel not in VALID_RELATION:
+                    row["relation"] = ""
+                    fixes["rel_cleaned"] += 1
+
+                writer.writerow(row)
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Postprocess {csv_path}:")
+    print(f"  {fixes['total']:,} rows processed")
+    print(f"  {fixes['sex_cleaned']} sex values fixed")
+    print(f"  {fixes['rel_cleaned']} relation values fixed")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Extract Nagaland SIR PDFs to CSV")
     ap.add_argument("--ac", default=None, help="AC numbers, comma-separated")
     ap.add_argument("--limit", type=int, default=None, help="process first N ACs")
     ap.add_argument("--out-dir", default="output/csv/nagaland")
     ap.add_argument("--combined", action="store_true", help="single CSV for state")
+    ap.add_argument("--postprocess", metavar="CSV", default=None,
+                    help="post-process an existing CSV to fix column bleeding")
     args = ap.parse_args()
+
+    if args.postprocess:
+        _postprocess(args.postprocess)
+        return
 
     raw_dir = os.path.join("data", "raw", STATE_ID)
     os.makedirs(args.out_dir, exist_ok=True)
@@ -255,7 +315,7 @@ def main():
 
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)

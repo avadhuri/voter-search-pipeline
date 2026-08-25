@@ -22,6 +22,7 @@ import zipfile
 import pdfplumber
 
 STATE_ID = "tripura"
+ROLL_YEAR = 2005
 N_COLS = 8
 NARROW_COLS = {4, 6, 7}
 ROW_TOL = 5.0
@@ -29,6 +30,7 @@ CSV_HEADERS = [
     "state", "district", "ac_no", "ac_name", "part_no",
     "serial_no", "house_no", "elector_name", "relation",
     "relation_name", "sex", "age", "epic_no",
+    "roll_year",
 ]
 
 # Column indices inside a row (0-based, after serial_no is cells[0])
@@ -270,6 +272,301 @@ def _load_meta():
         return json.load(f)
 
 
+# -- Postprocess ------------------------------------------------------------
+
+# Standard output schema
+OUT_HEADERS = [
+    "ac_number", "part_number", "serial_number", "elector_name",
+    "relation_name", "relation_type", "sex", "age", "locality",
+    "roll_year",
+]
+
+# Known Bengali relation prefixes (order matters: longer first)
+_REL_PREFIXES = [
+    ("স্ব্য", "স্ব্য"),  # husband (variant)
+    ("স্বঁ", "স্বঁ"),    # husband (variant)
+    ("স্বা", "স্বা"),    # husband
+    ("ম্য", "ম্য"),     # mother (variant)
+    ("মঁ", "মঁ"),       # mother (variant)
+    ("মা", "মা"),       # mother
+    ("িপ", "িপ"),       # father
+    ("অ", "অ"),         # other
+]
+
+# Valid sex values in the source
+_SEX_MAP = {"পুং": "M", "স্ত্রী": "F"}
+_VALID_SEX_BN = set(_SEX_MAP.keys())
+
+# Valid relation codes in source
+_VALID_REL = {"িপ", "স্ব্য", "স্বঁ", "স্বা", "ম্য", "মঁ", "মা", "অ"}
+
+
+def _postprocess(csv_path):
+    """Post-process Tripura CSV: normalise schema, sex, and relation fields.
+
+    Fixes applied:
+    1. Rename columns to standard schema, drop house_no/epic_no/roll_year/
+       state/district/ac_name.
+    2. Convert Bengali sex (পুং→M, স্ত্রী→F).
+    3. Fix column-shifted rows where sex has a numeric value (age leaked
+       into sex, sex text leaked into relation_name).
+    4. For rows with empty relation: extract Bengali relation prefix from
+       relation_name and move to relation_type.
+    5. For rows with relation code stuck at end of elector_name: extract
+       it and move to relation_type.
+
+    Re-runnable: auto-detects whether input uses old schema (ac_no,
+    relation) or new schema (ac_number, relation_type).
+    """
+    import tempfile
+    import shutil
+
+    stats = {
+        "total": 0,
+        "sex_mapped": 0,
+        "col_shift_fixed": 0,
+        "rel_extracted_from_relname": 0,
+        "rel_extracted_from_name": 0,
+        "rel_already_set": 0,
+    }
+
+    # Detect schema by peeking at header
+    with open(csv_path, encoding="utf-8") as fh:
+        header = fh.readline().strip().split(",")
+    old_schema = "ac_no" in header
+
+    # Column name mapping for field access
+    if old_schema:
+        F_AC = "ac_no"
+        F_PART = "part_no"
+        F_SN = "serial_no"
+        F_REL = "relation"
+    else:
+        F_AC = "ac_number"
+        F_PART = "part_number"
+        F_SN = "serial_number"
+        F_REL = "relation_type"
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", newline="", encoding="utf-8",
+        dir=os.path.dirname(csv_path) or ".",
+        suffix=".csv", delete=False,
+    )
+    try:
+        with open(csv_path, encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=OUT_HEADERS)
+            writer.writeheader()
+
+            for row in reader:
+                stats["total"] += 1
+
+                rel = row[F_REL].strip()
+                rel_name = row["relation_name"].strip()
+                sex = row["sex"].strip()
+                age = row["age"].strip()
+                name = row["elector_name"].strip()
+
+                # --- Fix column-shifted rows ---
+                # When sex has a numeric value, it means:
+                #   relation_name absorbed the sex text at the end,
+                #   sex actually has the age, age is empty.
+                if sex and sex.isdigit() and not age:
+                    age = sex
+                    sex = ""
+                    # Try to extract Bengali sex from end of relation_name
+                    for bn_sex in ("পুং", "স্ত্রী"):
+                        if rel_name.endswith(bn_sex):
+                            sex = _SEX_MAP[bn_sex]
+                            rel_name = rel_name[:-len(bn_sex)].strip()
+                            break
+                    stats["col_shift_fixed"] += 1
+
+                # --- Normalise sex ---
+                if sex in _SEX_MAP:
+                    sex = _SEX_MAP[sex]
+                    stats["sex_mapped"] += 1
+                elif sex not in ("M", "F", ""):
+                    sex = ""
+
+                # --- Extract relation prefix from relation_name ---
+                if rel and rel in _VALID_REL:
+                    stats["rel_already_set"] += 1
+                elif not rel and rel_name:
+                    for prefix, code in _REL_PREFIXES:
+                        if rel_name.startswith(prefix):
+                            rest = rel_name[len(prefix):].strip()
+                            if rest:  # only if there's actual name left
+                                rel = code
+                                rel_name = rest
+                                stats["rel_extracted_from_relname"] += 1
+                                break
+
+                # --- Extract relation code from end of elector_name ---
+                if not rel and name:
+                    for suffix, code in _REL_PREFIXES:
+                        if name.endswith(" " + suffix):
+                            name = name[: -(len(suffix) + 1)].strip()
+                            rel = code
+                            stats["rel_extracted_from_name"] += 1
+                            break
+
+                out = {
+                    "ac_number": row[F_AC].strip(),
+                    "part_number": row[F_PART].strip(),
+                    "serial_number": row[F_SN].strip(),
+                    "elector_name": name,
+                    "relation_name": rel_name,
+                    "relation_type": rel,
+                    "sex": sex,
+                    "age": age,
+                    "locality": row.get("locality", "").strip() if not old_schema else "",
+                    "roll_year": row.get("roll_year", "2005").strip(),
+                }
+                writer.writerow(out)
+
+        tmp.close()
+        shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Postprocess {csv_path}:")
+    print(f"  {stats['total']:,} rows total")
+    print(f"  {stats['sex_mapped']:,} sex values mapped (Bengali → M/F)")
+    print(f"  {stats['col_shift_fixed']:,} column-shifted rows fixed")
+    print(f"  {stats['rel_extracted_from_relname']:,} relation types extracted from relation_name")
+    print(f"  {stats['rel_extracted_from_name']:,} relation types extracted from elector_name suffix")
+    print(f"  {stats['rel_already_set']:,} relation types already set")
+    remaining_empty = (stats["total"] - stats["rel_already_set"]
+                       - stats["rel_extracted_from_relname"]
+                       - stats["rel_extracted_from_name"])
+    print(f"  {remaining_empty:,} rows still without relation type")
+
+
+# -- Transliteration -------------------------------------------------------
+
+_REL_EN = {
+    "িপ": "Father",
+    "স্ব্য": "Husband",
+    "স্বঁ": "Husband",
+    "স্বা": "Husband",
+    "ম্য": "Mother",
+    "মঁ": "Mother",
+    "মা": "Mother",
+    "অ": "Other",
+}
+
+_SEX_EN = {"M": "M", "F": "F"}
+
+
+def _reorder_bengali_matras(text):
+    """Fix pre-base matras (ি, ে, ৈ) that appear before their consonant.
+
+    In garbled source text, these vowel signs sometimes appear *before* the
+    consonant they modify (e.g. েদ instead of দে).  Only swap when the matra
+    is NOT already preceded by a consonant — that way correct sequences like
+    রেশ (r-e-sh) are left untouched.
+    """
+    return re.sub(
+        r'(?<![\u0995-\u09B9\u09DC-\u09DF])'   # not preceded by consonant
+        r'([\u09BF\u09C7\u09C8])'               # pre-base matra
+        r'([\u0995-\u09B9\u09DC-\u09DF])',       # followed by consonant
+        r'\2\1',
+        text,
+    )
+
+
+def _transliterate_bengali(text):
+    """Transliterate Bengali text to approximate English via IAST."""
+    if not text or not text.strip():
+        return ''
+    from indic_transliteration import sanscript
+    from indic_transliteration.sanscript import transliterate
+
+    cleaned = text.strip()
+
+    # Fix garbled pre-base matra ordering (ে/ৈ/ি before consonant)
+    cleaned = _reorder_bengali_matras(cleaned)
+
+    # Chandrabindu (ঁ U+0981) → anusvara (ং U+0982) for proper nasalisation
+    cleaned = cleaned.replace('\u0981', '\u0982')
+
+    # Handle nukta combinations before IAST conversion
+    # ড় → r, ঢ় → rh, য় → y  (nukta U+09BC)
+    cleaned = cleaned.replace('ড়', 'র')   # ড + nukta → treat as র (r)
+    cleaned = cleaned.replace('ঢ়', 'র')   # ঢ + nukta → treat as র (r)
+    cleaned = cleaned.replace('য়', 'য')   # য + nukta → treat as য (y)
+    cleaned = cleaned.replace('\u09BC', '')  # strip any remaining nukta
+
+    iast = transliterate(cleaned, sanscript.BENGALI, sanscript.IAST)
+
+    # Strip inherent schwa at end of each word BEFORE diacritic flattening,
+    # so we can distinguish short 'a' (inherent, usually silent word-finally
+    # in Bengali) from long 'ā' (explicit vowel sign া, should be kept).
+    words = iast.split()
+    result = []
+    for w in words:
+        if len(w) > 1 and w.endswith('a') and not w.endswith('āa'):
+            w = w[:-1]
+        result.append(w)
+    iast = ' '.join(result)
+
+    diacritic_map = {
+        'ā': 'a', 'ī': 'i', 'ū': 'u', 'ṛ': 'ri',
+        'ś': 'sh', 'ṣ': 'sh', 'ṭ': 't', 'ḍ': 'd', 'ṇ': 'n',
+        'ñ': 'n', 'ṅ': 'ng', 'ḥ': 'h', 'ṃ': 'm',
+    }
+    for k, v in diacritic_map.items():
+        iast = iast.replace(k, v)
+    return iast.title()
+
+
+def _transliterate_csv(csv_path):
+    """Add English transliteration columns to an existing Tripura CSV."""
+    import tempfile, shutil
+
+    with open(csv_path, encoding='utf-8') as fh:
+        reader = csv.DictReader(fh)
+        old_fields = list(reader.fieldnames)
+
+    # If already transliterated, re-transliterate (overwrite columns)
+    already_done = 'elector_name_en' in old_fields
+    if already_done:
+        new_fields = old_fields
+    else:
+        new_fields = old_fields + ['elector_name_en', 'relation_name_en',
+                                    'relation_type_en', 'sex_en']
+
+    tmp = tempfile.NamedTemporaryFile(mode='w', newline='', encoding='utf-8',
+                                      dir=os.path.dirname(csv_path) or '.',
+                                      suffix='.csv', delete=False)
+    try:
+        with open(csv_path, encoding='utf-8') as fh:
+            reader = csv.DictReader(fh)
+            writer = csv.DictWriter(tmp, fieldnames=new_fields)
+            writer.writeheader()
+            count = 0
+            for row in reader:
+                row['elector_name_en'] = _transliterate_bengali(row.get('elector_name', ''))
+                row['relation_name_en'] = _transliterate_bengali(row.get('relation_name', ''))
+                row['relation_type_en'] = _REL_EN.get(row.get('relation_type', '').strip(), '')
+                row['sex_en'] = _SEX_EN.get(row.get('sex', '').strip(), '')
+                writer.writerow(row)
+                count += 1
+                if count % 500_000 == 0:
+                    print(f"  {count:,} rows...", flush=True)
+            tmp.close()
+            shutil.move(tmp.name, csv_path)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
+
+    print(f"Transliterate {csv_path}: {count:,} rows, 4 columns added")
+
+
 # -- Main ------------------------------------------------------------------
 
 
@@ -279,7 +576,19 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="process first N ACs")
     ap.add_argument("--out-dir", default="output/csv/tripura")
     ap.add_argument("--combined", action="store_true", help="single CSV for state")
+    ap.add_argument("--postprocess", metavar="CSV", default=None,
+                    help="post-process an existing CSV to normalise schema and fix fields")
+    ap.add_argument("--transliterate", metavar="CSV", default=None,
+                    help="add English transliteration columns to an existing CSV")
     args = ap.parse_args()
+
+    if args.transliterate:
+        _transliterate_csv(args.transliterate)
+        return
+
+    if args.postprocess:
+        _postprocess(args.postprocess)
+        return
 
     raw_dir = os.path.join("data", "raw", STATE_ID)
     os.makedirs(args.out_dir, exist_ok=True)
@@ -306,7 +615,7 @@ def main():
 
         print(f"  {zf}: AC{ac_no:03d} {ac_name}...", end=" ", flush=True)
         rows, _ = _extract_ac_zip(zip_path)
-        full_rows = [[STATE_ID, district, ac_no, ac_name] + r for r in rows]
+        full_rows = [[STATE_ID, district, ac_no, ac_name] + r + [ROLL_YEAR] for r in rows]
 
         if args.combined:
             all_rows.extend(full_rows)
