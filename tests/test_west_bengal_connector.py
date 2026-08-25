@@ -33,3 +33,28 @@ def test_locality_extracted_when_value_wraps_onto_the_next_row():
     assert {r.locality for r in records} == {
         "BAGHBAZAR STREET (PREMISES NO.22/2A TO 30/2)"
     }
+
+
+# The Bengali-typeset covers below are the same field, in the same layout, set
+# in the legacy font -- so the label only matches after decoding. AC001 part 1
+# carries a value; AC260 part 1 genuinely carries none, with the *next* cover
+# label ("Name of Gram Panchayat / Ward No") sitting on the row below the
+# empty one, which is what a bare take-the-next-row fallback would publish.
+BENGALI_ZIP = os.path.join(RAW_DIR, "AC001.zip")        # value beside the label
+BENGALI_BLANK_ZIP = os.path.join(RAW_DIR, "AC260.zip")  # no value at all
+
+
+@pytest.mark.skipif(not os.path.exists(BENGALI_ZIP), reason="raw data not downloaded")
+def test_locality_extracted_from_a_bengali_typeset_cover():
+    records = _parse_first_part(BENGALI_ZIP, "AC001")
+    assert records
+    assert {r.locality for r in records} == {"317, নিত্যানন্দী (অংশ)"}
+
+
+@pytest.mark.skipif(
+    not os.path.exists(BENGALI_BLANK_ZIP), reason="raw data not downloaded"
+)
+def test_blank_bengali_locality_is_empty_not_the_next_label():
+    records = _parse_first_part(BENGALI_BLANK_ZIP, "AC260")
+    assert records
+    assert {r.locality for r in records} == {""}

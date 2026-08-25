@@ -47,13 +47,17 @@ only when every gid it uses lies in 3..97. Everything else decodes to
 U+E000+gid, which keeps an undecoded glyph distinguishable from a real
 character instead of silently becoming plausible-looking wrong text.
 
-Which leaves the real limitation, see parse_raw(): only the ~19 Kolkata ACs
-are typeset in English. The other ~275 are typeset in Bengali, and a Bengali
-glyph id cannot be turned into Unicode without a gid->Unicode table for that
-font (which nothing in the PDF provides). Their names are therefore *not*
-extracted -- they are left empty with a remark, never guessed at. The numeric
-and closed-vocabulary columns of those ACs are still recovered; see
-BN_DIGIT_GID / BN_RELATION / BN_GENDER below.
+Which leaves the typesetting, see parse_raw(). 23 ACs are typeset in English;
+the rest are typeset in Bengali, and a Bengali glyph id cannot be turned into
+Unicode without a gid->Unicode table for that font, which nothing in the PDF
+provides. Such a table has since been derived for the Shree-Lipi font 265 of
+them use -- states/west_bengal_shreelipi.py -- so their names decode too, with
+any glyph the table does not know reported in the row's remark rather than
+guessed at. What is still undecodable is Darjeeling's own font: AC022-AC024
+entirely, and a minority of the parts of AC025/AC026, whose glyph ids overlap
+Shree-Lipi's numerically while meaning something else. Rows from those parts
+keep their numeric and closed-vocabulary columns (see BN_DIGIT_GID /
+BN_RELATION / BN_GENDER below) and carry empty names with a remark saying so.
 """
 import io
 import json
@@ -149,6 +153,11 @@ def _gid_pairs(diff):
 _patch_pdfminer_gid_encoding()
 
 import pdfplumber  # noqa: E402  (import order matters: patch first)
+
+from states.west_bengal_shreelipi import (  # noqa: E402
+    decode as _shreelipi_decode,
+    looks_like_shreelipi,
+)
 
 
 def _is_undecoded(ch):
@@ -368,43 +377,70 @@ def _split_row(row, bounds):
 # patch as the roll table itself. Found the same way the column-number
 # anchor is found above: split each visual row into whitespace-separated
 # runs and look for the one matching the label text, then take the next run
-# on that row as its value. Confirmed only against a Latin-typeset fixture
-# (AC146) -- an unmatched label just leaves locality empty, the same
-# don't-guess discipline as the rest of this module, rather than assuming
-# Bengali-typeset cover pages share the layout.
+# on that row as its value. An unmatched label just leaves locality empty,
+# the same don't-guess discipline as the rest of this module.
+#
+# The label itself is typeset in the same legacy font as everything else on a
+# Bengali cover page, so it is only matchable after decoding -- decoding just
+# the *value* finds nothing to decode, because the label never matched. That
+# is why COVER_LOCALITY_LABEL_BN exists and why _parse_cover_locality decodes
+# every run on the page rather than only the ones after the label.
 
 COVER_LOCALITY_LABEL = re.compile(r"^village\s*/\s*area\s*/\s*road\s*:?$", re.IGNORECASE)
 
+# "গ্রাম/মহল্লা/রাস্তা" -- the same field on a Shree-Lipi cover page. The
+# source punctuates its labels with "ঃ" (U+0983) rather than a colon.
+COVER_LOCALITY_LABEL_BN = re.compile(r"^গ্রাম\s*/\s*মহল্লা\s*/\s*রাস্তা\s*[ঃ:]?$")
+
+# Punctuation that can sit between the label and its value as its own run.
+_LABEL_PUNCTUATION = ("", ":", "ঃ")
 
 _LIST_MARKER = re.compile(r"^\d+\)$")
 
 
-def _parse_cover_locality(page):
+def _parse_cover_locality(page, shreelipi=False):
     """"Village/Area/Road" value off a part's cover page, or "" if this page
     doesn't carry a recognizable one.
+
+    `shreelipi` says the page is set in the Bengali legacy font this repo has
+    a table for, in which case the whole page is transcoded before matching --
+    label included, since the label is set in that font too.
 
     The value sits beside the label on the same row when it's short (e.g.
     "PARK STREET"), but wraps onto the next row, prefixed with a "1)" list
     marker, when it's long enough to need one (e.g. "1) BAGHBAZAR STREET
     (PREMISES NO.22/2A TO 30/2)") -- both confirmed against real fixtures
     (AC146, AC141 respectively).
+
+    The next-row fallback requires that list marker rather than taking whatever
+    follows: a part whose locality is genuinely blank leaves the label alone on
+    its row, and the row under it is the *next* label ("Name of Gram Panchayat
+    / Ward No"), which would otherwise be published as this part's locality.
+    Measured over 435 Latin parts across all 19 Kolkata ACs, every real wrap
+    carries the marker, so requiring it costs nothing there.
     """
     rows = _rows_of(page.chars)
     row_texts = [[_cell_text(r) for r in _runs(row)] for row in rows]
+    if shreelipi:
+        row_texts = [[_shreelipi_decode(t)[0] for t in texts] for texts in row_texts]
+        label = COVER_LOCALITY_LABEL_BN
+    else:
+        label = COVER_LOCALITY_LABEL
     for i, texts in enumerate(row_texts):
         for j, text in enumerate(texts):
-            if not COVER_LOCALITY_LABEL.match(text):
+            if not label.match(text):
                 continue
             # the trailing ":" sometimes sits far enough from the label to be
             # its own whitespace-run rather than part of the label token, and
             # the value itself is often more than one run ("PARK" "STREET")
             k = j + 1
-            while k < len(texts) and texts[k] in ("", ":"):
+            while k < len(texts) and texts[k] in _LABEL_PUNCTUATION:
                 k += 1
             rest = texts[k:]
             if not rest and i + 1 < len(row_texts):
-                rest = row_texts[i + 1]
-            if rest and _LIST_MARKER.match(rest[0]):
+                nxt = row_texts[i + 1]
+                rest = nxt[1:] if nxt and _LIST_MARKER.match(nxt[0]) else []
+            elif rest and _LIST_MARKER.match(rest[0]):
                 rest = rest[1:]
             if rest and all(t and not _has_undecoded(t) for t in rest):
                 return " ".join(rest)
@@ -623,11 +659,13 @@ class WestBengalConnector(StateConnector):
         ZIP member name, which the downloader took from the site's part index.
 
         For a Bengali-typeset AC the name columns come out as glyph ids with no
-        Unicode mapping. Those rows are still emitted -- with their serial no,
-        house no, age, sex, relationship and EPIC number, all of which *are*
-        recoverable -- but full_name/full_relative_name are left empty and the
-        row carries a remark saying so, so that a later pass with a Bengali
-        glyph table can fill them in from the same archived ZIP.
+        Unicode mapping. Where the font is the Shree-Lipi one this repo has a
+        table for, they are decoded (see states/west_bengal_shreelipi.py). Where
+        it is not -- Darjeeling -- the rows are still emitted, with their serial
+        no, house no, age, sex, relationship and EPIC number, all of which *are*
+        recoverable, but full_name/full_relative_name are left empty and the row
+        carries a remark saying so, so that a later pass with that font's glyph
+        table can fill them in from the same archived ZIP.
         """
         records = []
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
@@ -642,32 +680,62 @@ class WestBengalConnector(StateConnector):
     def _parse_part(self, pdf_bytes, ac, roll_year, part_no, member):
         records, geometry = [], None
         locality = None
+        # Which legacy font this part is set in, decided once from the first
+        # page that carries any undecoded glyph. Darjeeling uses a different
+        # glyph space whose ids overlap this one's, so the wrong table would
+        # produce confident-looking nonsense rather than an error -- and it is
+        # decided per *part*, not per AC, because AC025 and AC026 are mixed:
+        # most of their parts are Shree-Lipi Bengali and a minority are not.
+        shreelipi = None
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
+                if shreelipi is None and page.chars:
+                    text = page.extract_text() or ""
+                    if _has_undecoded(text):
+                        shreelipi = looks_like_shreelipi(text)
                 if locality is None and page.chars:
-                    locality = _parse_cover_locality(page) or None
+                    locality = _parse_cover_locality(page, bool(shreelipi)) or None
                 rows, geometry = _page_rows(page, geometry)
                 for cells in rows:
                     records.append(
-                        self._record(cells, ac, roll_year, part_no, member)
+                        self._record(
+                            cells, ac, roll_year, part_no, member, bool(shreelipi)
+                        )
                     )
         for rec in records:
             rec.locality = locality or ""
         return records
 
-    def _record(self, cells, ac, roll_year, part_no, member):
+    def _record(self, cells, ac, roll_year, part_no, member, shreelipi=False):
         remarks = []
         name = cells[COL_NAME]
         rel_name = cells[COL_RELNAME]
 
         if _has_undecoded(name) or _has_undecoded(rel_name):
-            # Bengali-typeset AC: the glyphs are there but nothing in the PDF
-            # says what they mean. Refuse rather than transliterate a guess.
-            remarks.append(
-                "name in Bengali script: source font carries no ToUnicode map, "
-                "so the name columns are not decodable yet"
-            )
-            name = rel_name = ""
+            if shreelipi:
+                # The font has no ToUnicode map, but its glyph ids are known --
+                # see states/west_bengal_shreelipi.py for how that table was
+                # derived and validated.
+                name, missing = _shreelipi_decode(name)
+                rel_name, missing_rel = _shreelipi_decode(rel_name)
+                missing = sorted(set(missing) | set(missing_rel))
+                if missing:
+                    # The row is kept with the damage recorded, matching
+                    # states/karnataka.py -- a name short one letter still
+                    # searches, and the remark is what lets a later pass
+                    # census exactly which glyphs are still unmapped.
+                    remarks.append(
+                        "unmapped Bengali glyph id(s) in name columns: "
+                        + ", ".join(str(g) for g in missing)
+                    )
+            else:
+                # Some other legacy font -- the glyphs are there but nothing
+                # says what they mean. Refuse rather than guess.
+                remarks.append(
+                    "name in an unrecognized Bengali-script font: no glyph "
+                    "table for it, so the name columns are not decodable"
+                )
+                name = rel_name = ""
 
         relation = _normalize(
             _bn_lookup(cells[COL_REL], BN_RELATION, "relation_code", remarks),
