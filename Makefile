@@ -160,10 +160,27 @@ check-servable: ## Check built data is actually servable (PATH_= to override, ST
 # buckets; a collaborator hitting the describe check below should ask for
 # access rather than being handed bucket-creation rights just to unblock
 # this.
+#
+# Two-phase, files before catalog -- NOT one rsync of the whole tree. The
+# per-state catalog is the sole authority for which patch the serving app
+# fetches (it builds each AC's filename from the catalog's `patch` column,
+# with no fallback to a lower patch), so a catalog that lands ahead of the
+# files it names 404s every affected AC for as long as the gap lasts. A
+# single `gcloud storage rsync -r` gets this exactly backwards: `catalog/`
+# sorts ahead of the state directories, so it uploads *first*. That window
+# is seconds for a one-AC fix and hours for a multi-state push. Excluding
+# catalog/ from phase 1 and syncing it alone in phase 2 means the catalog
+# only ever starts naming a patch once that patch is fully present --
+# mirrors voter_search_engine's gcp-run-push-ac-db, which was fixed for
+# this and whose AC_CATALOG_EXCLUDE this matches deliberately.
+AC_CATALOG_EXCLUDE := ^catalog/.*
 push-ac-db-dev: check-servable ## Copy locally-built per-AC files (make build-db-ac) up to the dev GCS bucket
 	@gcloud storage buckets describe "gs://$(GCS_AC_BUCKET_DEV)" --project=$(GCP_PROJECT) >/dev/null 2>&1 || \
 		{ echo "gs://$(GCS_AC_BUCKET_DEV) not reachable -- check 'gcloud auth login'/'gcloud config set project $(GCP_PROJECT)', or ask the maintainer for bucket access"; exit 1; }
-	gcloud storage rsync -r $(AC_DB_LOCAL_DIR) gs://$(GCS_AC_BUCKET_DEV) --project=$(GCP_PROJECT)
+	@echo "  phase 1/2: per-AC files (catalog excluded)"
+	gcloud storage rsync -r $(AC_DB_LOCAL_DIR) gs://$(GCS_AC_BUCKET_DEV) --project=$(GCP_PROJECT) --exclude="$(AC_CATALOG_EXCLUDE)"
+	@echo "  phase 2/2: catalog"
+	gcloud storage rsync -r $(AC_DB_LOCAL_DIR)/catalog gs://$(GCS_AC_BUCKET_DEV)/catalog --project=$(GCP_PROJECT)
 
 # `make search NAME="Ramesh Kumar"` queries $(MULTI_DB). `make search
 # DB=data/db/A085.sqlite NAME="..." ARGS="--ac A085 --limit 10"` overrides

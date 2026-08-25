@@ -283,6 +283,19 @@ current than any summary here.
   its own contribution.
 - **Never commit downloaded raw files or built DBs** — `data/raw/` and
   `data/db/` are gitignored on purpose.
+- **`make push-ac-db-dev` must stay two-phase: files first, catalog
+  second.** The per-state catalog is the sole authority for which patch the
+  serving app fetches — it builds each AC's filename from the catalog's
+  `patch` column with no fallback to a lower patch — so a catalog that
+  lands ahead of the files it names 404s every affected AC until the gap
+  closes. A single `gcloud storage rsync -r` of the whole tree does exactly
+  the wrong thing, because `catalog/` sorts ahead of the state
+  directories and therefore uploads *first*. That window is seconds for a
+  one-AC fix and hours for a multi-state push. Hence
+  `AC_CATALOG_EXCLUDE` in phase 1 and a catalog-only rsync in phase 2. The
+  closed repo's `gcp-run-push-ac-db` was fixed for this first; this target
+  shipped with the one-rsync version and matches it now. If you add a
+  bucket-to-bucket or prod variant, it needs the same two phases.
 
 ## Where this fits with the closed repo
 
