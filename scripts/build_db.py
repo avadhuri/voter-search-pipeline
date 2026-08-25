@@ -130,9 +130,20 @@ CREATE TABLE state_coverage (
 );
 """
 
-CATALOG_SCHEMA = """
+# Dropping every catalog table and rewriting it from one run's results is what
+# made a scoped build silently take published ACs off the site (the failure
+# _guard_catalog_shrink exists to refuse). The tables are now created only if
+# absent and merged into per AC, so "build these three" means exactly that.
+# Replacing a catalog wholesale is still possible -- it is just no longer what
+# happens by accident. See CATALOG_RESET_SQL and --replace-catalog.
+CATALOG_RESET_SQL = """
 DROP TABLE IF EXISTS state_coverage;
-CREATE TABLE state_coverage (
+DROP TABLE IF EXISTS ac_index;
+DROP TABLE IF EXISTS catalog_locality;
+"""
+
+CATALOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS state_coverage (
     state_id TEXT PRIMARY KEY,
     label TEXT,
     acs_total INTEGER,
@@ -148,8 +159,7 @@ CREATE TABLE state_coverage (
     roll_year INTEGER
 );
 
-DROP TABLE IF EXISTS ac_index;
-CREATE TABLE ac_index (
+CREATE TABLE IF NOT EXISTS ac_index (
     state TEXT,
     ac_code TEXT,
     ac_name TEXT,
@@ -168,8 +178,7 @@ CREATE TABLE ac_index (
 -- hundred distinct strings per AC at most), so it stays in the eagerly-
 -- downloaded per-state catalog rather than requiring every state's per-AC
 -- files to be present just to power AC discovery.
-DROP TABLE IF EXISTS catalog_locality;
-CREATE TABLE catalog_locality (
+CREATE TABLE IF NOT EXISTS catalog_locality (
     state TEXT,
     ac_code TEXT,
     locality TEXT,
@@ -191,6 +200,13 @@ INSERT INTO state_coverage (
     state_id, label, acs_total, acs_digitized, locality_coverage, built_at,
     roll_year
 ) VALUES (?,?,?,?,?,?,?)
+ON CONFLICT(state_id) DO UPDATE SET
+    label = excluded.label,
+    acs_total = excluded.acs_total,
+    acs_digitized = excluded.acs_digitized,
+    locality_coverage = excluded.locality_coverage,
+    built_at = excluded.built_at,
+    roll_year = excluded.roll_year
 """
 
 AC_INDEX_INSERT_SQL = """
@@ -198,6 +214,13 @@ INSERT INTO ac_index (
     state, ac_code, ac_name, district, contract, patch,
     row_count, file_size_bytes, has_locality
 ) VALUES (?,?,?,?,?,?,?,?,?)
+ON CONFLICT(state, ac_code, contract) DO UPDATE SET
+    ac_name = excluded.ac_name,
+    district = excluded.district,
+    patch = excluded.patch,
+    row_count = excluded.row_count,
+    file_size_bytes = excluded.file_size_bytes,
+    has_locality = excluded.has_locality
 """
 
 CATALOG_LOCALITY_INSERT_SQL = """
@@ -672,15 +695,110 @@ def _build_one_ac(task):
     }
 
 
-def _guard_catalog_shrink(catalog_path, state_id, scoped_ac_codes, allow):
-    """Refuse a build whose scope would drop ACs an existing catalog serves.
+# Columns each catalog table must have for a merge to be safe. A catalog is
+# now reused rather than rewritten, so an older file with a drifted schema
+# would otherwise be silently merged into and quietly serve wrong columns --
+# CREATE TABLE IF NOT EXISTS is a no-op against it, not a migration. Checked
+# explicitly and loudly, because a guard that passes on a shape it does not
+# understand is not a guard. The fix is --replace-catalog, which is exactly
+# the old behaviour and is named in the error.
+_CATALOG_COLUMNS = {
+    "state_coverage": {"state_id", "label", "acs_total", "acs_digitized",
+                       "locality_coverage", "built_at", "roll_year"},
+    "ac_index": {"state", "ac_code", "ac_name", "district", "contract", "patch",
+                 "row_count", "file_size_bytes", "has_locality"},
+    "catalog_locality": {"state", "ac_code", "locality"},
+}
 
-    Each state's catalog is rewritten from that run's results alone -- it is
-    never merged into. So a scoped build (--acs) is not only "build these";
-    it is also "the catalog will name only these", and app.py serves exactly
-    what the catalog names, with no fallback to a lower patch. Adding new ACs
-    to a published state by listing only the new ones therefore takes every
-    other AC off the site, silently, with a build that looks entirely normal.
+
+def _assert_catalog_schema(conn, catalog_path):
+    for table, expected in _CATALOG_COLUMNS.items():
+        present = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if not present:
+            continue                      # freshly created below; nothing to check
+        missing = expected - present
+        if missing:
+            raise SystemExit(
+                f"{catalog_path}: table {table} is missing column(s) "
+                f"{', '.join(sorted(missing))}. This catalog predates the current "
+                f"schema and cannot be merged into.\n"
+                f"  Rebuild it with --replace-catalog (make build-db-ac "
+                f"REPLACE_CATALOG=1), passing every AC the state should serve."
+            )
+
+
+def _write_catalog(catalog_path, state_id, label, acs_total, roll_year, built_at,
+                   ac_index_rows, locality_rows, scoped_ac_codes, replace):
+    """Merge one run's results into a state's catalog, or replace it outright.
+
+    The default is a merge, per AC: a build of three ACs adds or updates those
+    three rows and leaves every other AC the catalog serves exactly as it was,
+    at the patch it was published at. That is the whole point -- the app reads
+    the catalog as the sole authority for which ACs exist and at which patch,
+    with no fallback to a lower one, so a rewrite-from-this-run-alone turns
+    "build these three" into "serve only these three".
+
+    Two things are deliberately not a plain union:
+
+    * catalog_locality is cleared for the ACs in *this* run before inserting.
+      A union would keep a locality string that a re-parse no longer produces,
+      so a corrected AC would serve a picker entry that matches nothing.
+    * acs_digitized and locality_coverage are recomputed from the merged
+      ac_index, never from this run's results. acs_digitized is a public
+      coverage claim -- app.py renders it per state, sums it for the site-wide
+      constituency figure, and gates a state's liveness on it -- so under
+      merging, "how many ACs this run built" is simply the wrong number. This
+      is the same defect class as the len(paths) count it replaced.
+    """
+    conn = sqlite3.connect(catalog_path)
+    try:
+        if replace:
+            conn.executescript(CATALOG_RESET_SQL)
+        _assert_catalog_schema(conn, catalog_path)
+        conn.executescript(CATALOG_SCHEMA)
+
+        conn.executemany(AC_INDEX_INSERT_SQL, ac_index_rows)
+        conn.executemany(
+            "DELETE FROM catalog_locality WHERE state = ? AND ac_code = ?",
+            [(state_id, code) for code in scoped_ac_codes],
+        )
+        conn.executemany(CATALOG_LOCALITY_INSERT_SQL, locality_rows)
+
+        built, with_locality = conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(has_locality), 0) "
+            "FROM ac_index WHERE state = ?", (state_id,)
+        ).fetchone()
+        if not built:
+            coverage = "none"
+        elif with_locality == built:
+            coverage = "full"
+        elif with_locality:
+            coverage = "partial"
+        else:
+            coverage = "none"
+
+        conn.execute(STATE_COVERAGE_INSERT_SQL, (
+            state_id, label, acs_total, built, coverage, built_at, roll_year,
+        ))
+        conn.commit()
+    finally:
+        conn.close()
+    return built, coverage
+
+
+def _guard_catalog_shrink(catalog_path, state_id, scoped_ac_codes, allow):
+    """Refuse a --replace-catalog build whose scope drops ACs the catalog serves.
+
+    A replace rewrites the state's catalog from that run's results alone. So
+    a scoped replace (--acs) is not only "build these"; it is also "the
+    catalog will name only these", and app.py serves exactly what the catalog
+    names, with no fallback to a lower patch. Replacing a published state's
+    catalog with only the ACs being added therefore takes every other AC off
+    the site, silently, with a build that looks entirely normal.
+
+    Merging -- the default since union support landed -- cannot do this at
+    all, which is why this only guards the replace path. The flag stays
+    because replacing is still the only way to *retire* an AC.
 
     Stopping is the safe direction here, against the house preference for
     degrading: the failure this prevents is invisible in the build output,
@@ -740,7 +858,7 @@ def _guard_catalog_shrink(catalog_path, state_id, scoped_ac_codes, allow):
 
 
 def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, workers=None,
-                 ac_codes=None, allow_catalog_shrink=False):
+                 ac_codes=None, allow_catalog_shrink=False, replace_catalog=False):
     """Build one small <ac_code>-<contract>.p<patch>.sqlite per (state,
     ac_code), plus one small catalog.sqlite per state -- the native per-AC
     serving artifact set (no combined DB is built or needed for this path;
@@ -763,6 +881,14 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
     ac_codes, when given, restricts the build to those ACs and fails if any
     of them has no raw file. Without it the scope is every raw file present,
     which is only ever right by accident -- see the comment at the filter.
+
+    The catalog is *merged* into, per AC: this run's ACs are added or updated
+    and every other AC the catalog serves is left alone, at the patch it was
+    published at. So a scoped build now means only what it says, and adding
+    ACs to a published state no longer requires re-listing (and re-indexing)
+    every AC that state already serves. replace_catalog restores the old
+    rewrite-from-this-run-alone behaviour, and only then does the shrink
+    guard apply -- with merging, there is nothing to shrink.
     """
     unknown = [s for s in state_ids if s not in STATE_CONNECTORS]
     if unknown:
@@ -786,12 +912,14 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
             sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"]))),
             ac_codes, state_id, info,
         )
-        _guard_catalog_shrink(
-            os.path.join(catalog_dir, f"{state_id}.sqlite"),
-            state_id,
-            [os.path.splitext(os.path.basename(p))[0] for p in paths],
-            allow_catalog_shrink,
-        )
+        if replace_catalog:
+            # Only a replace can drop a published AC now; a merge cannot.
+            _guard_catalog_shrink(
+                os.path.join(catalog_dir, f"{state_id}.sqlite"),
+                state_id,
+                [os.path.splitext(os.path.basename(p))[0] for p in paths],
+                allow_catalog_shrink,
+            )
 
         state_dir = os.path.join(out_dir, state_id)
         os.makedirs(state_dir, exist_ok=True)
@@ -846,7 +974,6 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
             ),
             prefix=f"  [{state_id}] ",
         )
-        acs_with_locality = {r["ac_code"] for r in results if r["has_locality"]}
         ac_index_rows = [
             (
                 state_id, r["ac_code"], r["ac_name"], r["district"], contract, patch,
@@ -864,30 +991,18 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
               f"({pool_size} worker(s), roll year {state_roll_year})")
         grand_total += state_total
 
-        # results excludes unparseable ACs, so it -- not len(paths) -- is
-        # how many ACs this state actually has files for. See the same
-        # correction in build_multi_state above.
-        if not results:
-            locality_coverage = "none"
-        elif len(acs_with_locality) == len(results):
-            locality_coverage = "full"
-        elif acs_with_locality:
-            locality_coverage = "partial"
-        else:
-            locality_coverage = "none"
-
+        # Both coverage figures are computed inside _write_catalog, off the
+        # *merged* ac_index -- this run's results are the wrong denominator
+        # once a build can be a subset of what the state serves.
         catalog_path = os.path.join(catalog_dir, f"{state_id}.sqlite")
-        cat_conn = sqlite3.connect(catalog_path)
-        cat_conn.executescript(CATALOG_SCHEMA)
-        cat_conn.execute(STATE_COVERAGE_INSERT_SQL, (
-            state_id, info["label"], len(ac_lookup), len(results),
-            locality_coverage, built_at, state_roll_year,
-        ))
-        cat_conn.executemany(AC_INDEX_INSERT_SQL, ac_index_rows)
-        cat_conn.executemany(CATALOG_LOCALITY_INSERT_SQL, locality_rows)
-        cat_conn.commit()
-        cat_conn.close()
-        print(f"  wrote catalog {catalog_path}")
+        served, coverage = _write_catalog(
+            catalog_path, state_id, info["label"], len(ac_lookup),
+            state_roll_year, built_at, ac_index_rows, locality_rows,
+            [r["ac_code"] for r in results], replace_catalog,
+        )
+        verb = "replaced" if replace_catalog else "merged into"
+        print(f"  {verb} catalog {catalog_path}: {len(results)} AC(s) this run, "
+              f"{served} served, locality {coverage}")
 
     print(f"\nLoaded {grand_total} records across {len(state_ids)} state(s) into {out_dir} (per-AC).")
 
@@ -911,6 +1026,11 @@ if __name__ == "__main__":
     if allow_catalog_shrink:
         sys.argv.remove("--allow-catalog-shrink")
 
+    # Same reason again: a bare flag would shift the count-matched branches.
+    replace_catalog = "--replace-catalog" in sys.argv
+    if replace_catalog:
+        sys.argv.remove("--replace-catalog")
+
     if len(sys.argv) == 4 and sys.argv[1] == "--combine":
         build_combined(sys.argv[2], sys.argv[3], state_id=legacy_state_id)
     elif "--per-ac" in sys.argv and "--states" in sys.argv:
@@ -925,7 +1045,8 @@ if __name__ == "__main__":
         acs = sys.argv[sys.argv.index("--acs") + 1].split(",") if "--acs" in sys.argv else None
         build_per_ac(state_ids, out_dir, contract=contract, patch=patch,
                      roll_year=roll_year, workers=workers, ac_codes=acs,
-                     allow_catalog_shrink=allow_catalog_shrink)
+                     allow_catalog_shrink=allow_catalog_shrink,
+                     replace_catalog=replace_catalog)
     elif sys.argv[1:2] == ["--states"] and len(sys.argv) in (4, 6, 8):
         roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
         acs = sys.argv[sys.argv.index("--acs") + 1].split(",") if "--acs" in sys.argv else None

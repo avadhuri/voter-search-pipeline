@@ -755,12 +755,13 @@ def _karnataka_two_ac_raw(tmp_path, monkeypatch):
 def test_scoped_rebuild_refuses_to_drop_acs_the_catalog_already_serves(tmp_path, monkeypatch):
     """The failure this guards is invisible everywhere else.
 
-    A catalog is rewritten from its run's results alone, so building only the
-    ACs you are adding silently un-serves every AC you left out -- with a
-    clean build log, correct row counts, a green search-quality suite (it
-    drives explicit (state, ac_code) pairs) and freshness guards that see
-    nothing stale, because what remains genuinely isn't. Only the count of
-    what is covered is wrong, which is a public claim, not bookkeeping.
+    --replace-catalog rewrites a catalog from its run's results alone, so
+    replacing with only the ACs you are adding silently un-serves every AC you
+    left out -- with a clean build log, correct row counts, a green
+    search-quality suite (it drives explicit (state, ac_code) pairs) and
+    freshness guards that see nothing stale, because what remains genuinely
+    isn't. Only the count of what is covered is wrong, which is a public
+    claim, not bookkeeping.
     """
     _karnataka_two_ac_raw(tmp_path, monkeypatch)
     out_dir = tmp_path / "per_ac"
@@ -773,7 +774,8 @@ def test_scoped_rebuild_refuses_to_drop_acs_the_catalog_already_serves(tmp_path,
 
     with pytest.raises(SystemExit) as excinfo:
         build_db.build_per_ac(
-            ["karnataka"], str(out_dir), contract="c1", patch=1, ac_codes=["A085"]
+            ["karnataka"], str(out_dir), contract="c1", patch=1,
+            ac_codes=["A085"], replace_catalog=True,
         )
     message = str(excinfo.value)
     assert "A012" in message, "the refusal must name what it would have dropped"
@@ -817,8 +819,130 @@ def test_allow_catalog_shrink_lets_a_deliberate_narrowing_through(tmp_path, monk
 
     build_db.build_per_ac(
         ["karnataka"], str(out_dir), contract="c1", patch=1,
-        ac_codes=["A085"], allow_catalog_shrink=True,
+        ac_codes=["A085"], allow_catalog_shrink=True, replace_catalog=True,
     )
     conn = sqlite3.connect(out_dir / "catalog" / "karnataka.sqlite")
     assert {r[0] for r in conn.execute("SELECT ac_code FROM ac_index")} == {"A085"}
+    conn.close()
+
+
+def test_a_scoped_build_merges_into_the_catalog_rather_than_replacing_it(
+    tmp_path, monkeypatch
+):
+    """The whole point of union: a build of one AC means one AC.
+
+    Extending a published state used to require re-listing every AC it
+    already serves, purely so the rewritten catalog would still name them.
+    Merging makes the scope mean what it says -- and, unlike the shrink
+    guard, it is not something a --allow flag can defeat by accident.
+    """
+    _karnataka_two_ac_raw(tmp_path, monkeypatch)
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=0)
+
+    build_db.build_per_ac(
+        ["karnataka"], str(out_dir), contract="c1", patch=1, ac_codes=["A085"]
+    )
+
+    conn = sqlite3.connect(out_dir / "catalog" / "karnataka.sqlite")
+    # A012 keeps the patch it was published at -- the app has no fallback to a
+    # lower one, so carrying its own patch across the merge is what keeps it
+    # fetchable at all.
+    assert dict(conn.execute("SELECT ac_code, patch FROM ac_index")) == {
+        "A012": 0, "A085": 1,
+    }
+    assert conn.execute(
+        "SELECT acs_digitized FROM state_coverage WHERE state_id = 'karnataka'"
+    ).fetchone()[0] == 2
+    conn.close()
+
+    # ...and the file the merged row names is really there, at both patches.
+    assert (out_dir / "karnataka" / "A012-c1.p0.sqlite").exists()
+    assert (out_dir / "karnataka" / "A085-c1.p1.sqlite").exists()
+
+
+def test_acs_digitized_counts_the_merged_catalog_not_the_run(tmp_path, monkeypatch):
+    """acs_digitized is a public coverage claim -- app.py renders it per
+    state, sums it for the site-wide constituency figure, and gates a state's
+    liveness on it being > 0. Under merging, "how many ACs this run built" is
+    simply the wrong number, the same defect class as the len(paths) count it
+    replaced."""
+    _karnataka_two_ac_raw(tmp_path, monkeypatch)
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=0,
+                          ac_codes=["A012"])
+    conn = sqlite3.connect(out_dir / "catalog" / "karnataka.sqlite")
+    assert conn.execute("SELECT acs_digitized FROM state_coverage").fetchone()[0] == 1
+    conn.close()
+
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=0,
+                          ac_codes=["A085"])
+    conn = sqlite3.connect(out_dir / "catalog" / "karnataka.sqlite")
+    assert conn.execute("SELECT acs_digitized FROM state_coverage").fetchone()[0] == 2
+    conn.close()
+
+
+class _RenamedLocalityConnector(_ThreeACConnector):
+    """Module-level so the per-AC worker pool can pickle it."""
+
+    def parse_raw(self, raw, ac, roll_year):
+        rows = super().parse_raw(raw, ac, roll_year)
+        for r in rows:
+            r.locality = "Village Two"
+        return rows
+
+
+def test_a_rebuilt_ac_s_localities_are_replaced_not_unioned(tmp_path, monkeypatch):
+    """A pure union would be wrong here.
+
+    catalog_locality drives the picker's village/city tier, so a locality a
+    re-parse no longer produces has to go -- keeping it serves an entry that
+    matches nothing. Scoped to this run's ACs, so a rebuild of one AC cannot
+    touch another's.
+    """
+    raw_dir = _scope_raw(tmp_path)
+    _register(monkeypatch, "scopestate", _ThreeACConnector, raw_dir)
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["scopestate"], str(out_dir), patch=0, workers=1,
+                          ac_codes=["AC001", "AC002"])
+
+    _register(monkeypatch, "scopestate", _RenamedLocalityConnector, raw_dir)
+    build_db.build_per_ac(["scopestate"], str(out_dir), patch=1, workers=1,
+                          ac_codes=["AC001"])
+
+    conn = sqlite3.connect(out_dir / "catalog" / "scopestate.sqlite")
+    assert sorted(conn.execute(
+        "SELECT ac_code, locality FROM catalog_locality ORDER BY ac_code")) == [
+        ("AC001", "Village Two"),   # the stale one is gone, not kept alongside
+        ("AC002", "Village One"),   # untouched by a build that never named it
+    ]
+    conn.close()
+
+
+def test_a_catalog_predating_the_merge_says_how_to_rebuild_it(tmp_path, monkeypatch):
+    """Merging upserts into whatever tables exist, so a catalog written by an
+    older pipeline -- missing a column this one writes -- would fail deep
+    inside an executemany with an opaque message. Name the fix instead."""
+    _karnataka_two_ac_raw(tmp_path, monkeypatch)
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=0)
+
+    cat = out_dir / "catalog" / "karnataka.sqlite"
+    conn = sqlite3.connect(cat)
+    conn.execute("ALTER TABLE ac_index DROP COLUMN row_count")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(SystemExit) as excinfo:
+        build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1",
+                              patch=1, ac_codes=["A085"])
+    message = str(excinfo.value)
+    assert "row_count" in message
+    assert "--replace-catalog" in message
+
+    # And the escape hatch it names actually works.
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=1,
+                          replace_catalog=True)
+    conn = sqlite3.connect(cat)
+    assert {r[0] for r in conn.execute("SELECT ac_code FROM ac_index")} == {"A012", "A085"}
     conn.close()

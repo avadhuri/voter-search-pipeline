@@ -170,8 +170,8 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 # fans per-AC parsing out across (default: cpu_count - 1); an interrupted
 # run is safe to just re-run -- already-finalized AC files are skipped, not
 # rebuilt.
-build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; ACS=AC1,AC2; PATCH=n revision; OUT=dir; WORKERS=n)
-	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(if $(OUT),$(OUT),$(AC_DB_LOCAL_DIR)) $(if $(PATCH),--patch $(PATCH),) $(if $(WORKERS),--workers $(WORKERS),) $(if $(ACS),--acs $(ACS),)
+build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; ACS=AC1,AC2; PATCH=n revision; OUT=dir; WORKERS=n; REPLACE_CATALOG=1 to rewrite rather than merge)
+	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(if $(OUT),$(OUT),$(AC_DB_LOCAL_DIR)) $(if $(PATCH),--patch $(PATCH),) $(if $(WORKERS),--workers $(WORKERS),) $(if $(ACS),--acs $(ACS),) $(if $(REPLACE_CATALOG),--replace-catalog,)
 
 # The gate between "it built" and "it can be served". Every check it runs is
 # for something that produces a completely normal-looking build -- right row
