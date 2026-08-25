@@ -150,8 +150,10 @@ ROW_TOLERANCE = 5.0
 EDGE_TOLERANCE = 3.0
 
 
-class UnparseableRollError(Exception):
-    """Raised for an AC whose PDFs are scans with no usable text layer."""
+# Defined in states/base.py so build_db can catch it without importing a
+# state module; re-exported here because this connector raises it and
+# callers have always imported it from here.
+from states.base import UnparseableRollError  # noqa: F401  (re-export)
 
 
 def _clean(val):
