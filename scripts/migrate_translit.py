@@ -1,12 +1,16 @@
 """
 One-time migration: backfill full_name_latin / full_relative_name_latin on
 an already-built DB (e.g. data/db/multi_state_2002.sqlite), so Latin-script
-search against Devanagari-script states (Haryana) doesn't rely solely on
-app.py's per-search lazy-eval fallback for its first hit.
+search against a non-Latin-script state (Haryana, and every state added
+since) doesn't rely solely on app.py's per-search lazy-eval fallback for its
+first hit.
 
-Safe to re-run -- only fills rows where the *_latin columns are still NULL,
-so an interrupted run just resumes. See scripts/transliteration.py for why
-this is precomputed per distinct string rather than per row or per query.
+Safe to re-run -- only fills rows whose *_latin columns are still empty, so
+an interrupted run just resumes, and a connector that supplied its own
+romanization keeps it. See scripts/transliteration.py for why this is
+precomputed per distinct string rather than per row or per query, and for
+the per-script quality numbers that make a connector-supplied value worth
+preferring.
 
 Usage:
     scripts/migrate_translit.py [db_path]
@@ -30,11 +34,22 @@ def migrate(db_path):
         print("Added full_name_latin / full_relative_name_latin columns.")
 
     started = time.perf_counter()
-    count = backfill_latin_columns(conn)
+    result = backfill_latin_columns(conn)
     conn.commit()
     elapsed = time.perf_counter() - started
 
-    print(f"Transliterated {count} distinct Devanagari name strings in {elapsed:.1f}s.")
+    print(
+        f"Transliterated {result.transliterated} distinct non-Latin name "
+        f"strings in {elapsed:.1f}s."
+    )
+    if result.incomplete:
+        examples = ", ".join(f"{native} -> {latin}" for native, latin in result.sample)
+        print(
+            f"  WARNING: {result.incomplete} still contain native-script "
+            f"characters the transliteration scheme has no mapping for, so a "
+            f"Latin-script query will score badly against them -- those "
+            f"states want a connector-supplied full_name_latin. e.g. {examples}"
+        )
     conn.close()
 
 

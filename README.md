@@ -81,6 +81,7 @@ pip install -e . pytest
 pytest
 ```
 
-Two tests are known-failing independent of any change here — see the
-failure messages, both are pre-existing gaps in that state connector's
-edge-case handling, not regressions.
+One test is known-failing independent of any change here
+(`test_karnataka_connector.py::test_parse_raw_normalizes_rows_and_skips_malformed`)
+— see the failure message, a pre-existing gap in that connector's
+edge-case handling, not a regression.

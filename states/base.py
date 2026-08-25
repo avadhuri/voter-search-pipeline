@@ -45,6 +45,26 @@ class VoterRecord:
     remark: str = ""        # human-readable note on any source-data quirk in this row
     locality: str = ""      # village/town/area name, where the source carries one
 
+    # Romanized forms of the two name fields, for a state whose rolls aren't
+    # in Latin script. Optional, and only worth setting if the connector's
+    # own extraction produced them -- a source that publishes both scripts,
+    # or an OCR/decode step that emits a Latin reading alongside the native
+    # one. Leave them empty otherwise: build_db.py runs
+    # transliteration.backfill_latin_columns() over every non-Latin state,
+    # which fills exactly the rows left blank here and never overwrites a
+    # value a connector set.
+    #
+    # A connector-supplied value wins deliberately, not by accident of
+    # ordering. The backfill is rule-based ITRANS, and its output is a
+    # transliteration scheme rather than a name -- readable enough for
+    # fuzzy matching in Devanagari or Telugu, actively wrong in Tamil
+    # (ச -> "jh", so Selvam becomes "jhelvam") and incomplete in Malayalam
+    # (chillu forms pass through untransliterated). A connector that saw
+    # the source knows better in every case. See transliteration.py's
+    # module docstring for the measured per-script numbers.
+    full_name_latin: str = ""
+    full_relative_name_latin: str = ""
+
 
 class StateConnector:
     """

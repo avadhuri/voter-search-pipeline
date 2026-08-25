@@ -20,9 +20,16 @@ def _build_db_with_2025_rows(tmp_path, rows_2025):
 
 
 def _row_2025(full_name, full_relative_name, age, gender="M", ac_code="A085"):
+    """A hand-built row for build_db.INSERT_SQL, positional and therefore
+    coupled to it: the trailing blanks are remark, locality, source_url,
+    full_name_latin and full_relative_name_latin, none of which
+    cross-referencing reads. Adding a column to INSERT_SQL means adding a
+    blank here -- the failure is a bindings-count error naming both numbers,
+    so it says exactly what to do."""
     return (
         "karnataka", 2025, "BANGALORE URBAN", ac_code, "Shivajinagar",
         5, 999, "", full_name, full_relative_name, "F", "Father", age, gender,
+        "", "", "", "", "",
     )
 
 
