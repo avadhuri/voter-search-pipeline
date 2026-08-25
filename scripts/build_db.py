@@ -67,7 +67,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from states.registry import STATE_CONNECTORS
 from states.roll_years import resolve_roll_year, roll_year_for
 from states.source_urls import resolve_source_url
-from transliteration import backfill_latin_columns
+from transliteration import BackfillResult, backfill_latin_columns
 
 VOTERS_SCHEMA = """
 DROP TABLE IF EXISTS voters;
@@ -165,8 +165,9 @@ INSERT_SQL = """
 INSERT INTO voters (
     state, roll_year, district, ac_code, ac_name, part_no, serial_no,
     local_ref, full_name, full_relative_name, relation_code,
-    relation_label, age, gender, remark, locality, source_url
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    relation_label, age, gender, remark, locality, source_url,
+    full_name_latin, full_relative_name_latin
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 STATE_COVERAGE_INSERT_SQL = """
@@ -292,9 +293,42 @@ def _records_to_rows(records):
             r.full_relative_name, r.relation_code,
             RELATION_LABELS.get(r.relation_code, r.relation_code),
             r.age, r.gender, r.remark, r.locality, resolve_source_url(r),
+            # Written straight through, blank included. A blank is what
+            # backfill_latin_columns() below looks for; a connector-supplied
+            # value is what it leaves alone. See VoterRecord's own comment.
+            getattr(r, "full_name_latin", "") or "",
+            getattr(r, "full_relative_name_latin", "") or "",
         )
         for r in records
     ]
+
+
+def _report_backfill(result, prefix=""):
+    """Print what the rule-based transliteration managed, and what it didn't.
+
+    The `incomplete` half is the part worth printing: those are names whose
+    romanization still holds native-script characters, because the scheme has
+    no mapping for them (Malayalam chillu forms, Tamil ன -- both common name
+    endings). Such a row is fully built and passes every downstream check
+    while being effectively unfindable by a Latin-script query, so a build
+    that stayed silent about it would hand the discovery to a user who can't
+    find themselves. Not an error: the fix is a connector that supplies
+    full_name_latin itself, which is a change to that state, not to this run.
+    """
+    if not result.transliterated:
+        return
+    print(
+        f"{prefix}Transliterated {result.transliterated} distinct "
+        f"non-Latin name strings to Latin script."
+    )
+    if result.incomplete:
+        examples = ", ".join(f"{native} -> {latin}" for native, latin in result.sample)
+        print(
+            f"{prefix}  WARNING: {result.incomplete} of them still contain "
+            f"native-script characters the scheme has no mapping for, so a "
+            f"Latin-script query will score badly against them. Supply "
+            f"full_name_latin from the connector for this state. e.g. {examples}"
+        )
 
 
 def _finalize(conn):
@@ -463,9 +497,7 @@ def build_multi_state(state_ids, db_path, roll_year=None):
             locality_coverage, built_at, state_roll_year,
         ))
 
-    translit_count = backfill_latin_columns(conn, state_ids=state_ids)
-    if translit_count:
-        print(f"Transliterated {translit_count} distinct Devanagari name strings to Latin script.")
+    _report_backfill(backfill_latin_columns(conn, state_ids=state_ids))
     _finalize(conn)
     check_total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
     print(f"\nLoaded {check_total} records across {len(state_ids)} state(s) into {db_path}.")
@@ -529,6 +561,7 @@ def _build_one_ac(task):
             "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
             "row_count": row_count, "file_size_bytes": os.path.getsize(ac_db_path),
             "has_locality": bool(localities), "localities": localities, "skipped": True,
+            "translit": BackfillResult(0, 0, []),
         }
 
     connector = connector_cls()
@@ -539,7 +572,7 @@ def _build_one_ac(task):
     ac_conn = sqlite3.connect(ac_db_path)
     ac_conn.executescript(VOTERS_SCHEMA)
     ac_conn.executemany(INSERT_SQL, _records_to_rows(records))
-    backfill_latin_columns(ac_conn, state_ids=[state_id])
+    translit = backfill_latin_columns(ac_conn, state_ids=[state_id])
     _finalize_voters_only(ac_conn)
     ac_conn.close()
 
@@ -548,6 +581,10 @@ def _build_one_ac(task):
         "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
         "row_count": len(records), "file_size_bytes": os.path.getsize(ac_db_path),
         "has_locality": bool(localities), "localities": localities, "skipped": False,
+        # Carried up rather than printed here: this runs in a pool worker, so
+        # its stdout interleaves with every other AC's. build_per_ac() sums
+        # them and reports once per state.
+        "translit": translit,
     }
 
 
@@ -612,6 +649,14 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
 
         results.sort(key=lambda r: r["ac_code"])
         state_total = sum(r["row_count"] for r in results)
+        _report_backfill(
+            BackfillResult(
+                sum(r["translit"].transliterated for r in results),
+                sum(r["translit"].incomplete for r in results),
+                [s for r in results for s in r["translit"].sample][:5],
+            ),
+            prefix=f"  [{state_id}] ",
+        )
         acs_with_locality = {r["ac_code"] for r in results if r["has_locality"]}
         ac_index_rows = [
             (
