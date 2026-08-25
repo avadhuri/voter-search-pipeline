@@ -19,17 +19,31 @@ square on the platen), but every data row contains exactly one of
 fields the app actually searches. Splitting on it costs nothing when a scan
 is skewed.
 
-**A digit that came back in the wrong script is dropped, not converted.**
-Vision transcribes some Bengali numerals as the Latin numerals they resemble,
-and most of those are harmless because the glyphs genuinely correspond
-(৬->6, ৯->9, ০->0). ৪ is not: it looks like an 8, so ৪০ comes back as "80"
-and a 40-year-old becomes 80. Measured at 14% of rows on the first part
-OCR'd. An age that is wrong but plausible is worse than no age at all here --
-the search form's year-of-birth field is required, so a doubled age makes
-that elector unfindable by the person looking for them, while `age IS NULL`
-is already spared by the query (see CLAUDE.md, "An unusable age means
-'unknown', never 'not your match'"). Hence: Bengali digits are trusted,
-Latin digits in the age column become None plus a remark.
+**No age is stored from a scanned AC.** Vision transcribes some Bengali
+numerals as the Latin numerals they resemble, and an earlier version of this
+module trusted the Bengali-read ages and dropped only the Latin-read ones.
+Measurement retired that split. A confusion matrix over 73 digit pairs (the
+serial column, whose true values are known from its own consecutiveness) has
+৩ coming back as 3 only 54% of the time and as 6 or 8 the rest, and ৪ as 8
+more often (59%) than as 4 (39%) -- and, decisively, the errors are *visual*,
+not script-dependent: serials read in Bengali are monotonically increasing
+down the page 92.5% of the time against 89.7% for serials read in Latin.
+Which script a token came back in is therefore no evidence that it is right,
+so dropping the Latin ones removed a visible sample of an error equally
+present in the ages that were kept.
+
+An age that is wrong but plausible is worse than no age at all here: the
+search form's year-of-birth field is *required*, so a ৩->6 misread moves an
+elector three decades and no one looking for them can find them, while
+`age IS NULL` is already spared by the query (CLAUDE.md, "An unusable age
+means 'unknown', never 'not your match'"). The age token is still located --
+it has to be, or it lands in the relative's name -- and then discarded.
+
+The blank is uniform across every row of every scanned AC, so it earns no
+per-row remark; that would say nothing about the row it was stamped on and
+would drown the remarks that do. Only an age token that could not be *found*
+gets one ("age not read"), because then nothing was trimmed and the
+relative's name may carry the leftovers.
 """
 from __future__ import annotations
 
@@ -184,6 +198,8 @@ def parse_row(tokens: list[str]) -> dict | None:
     # Bengali first, and only then Latin: the stray fragments a scan picks up
     # off the column rule are Latin far more often than Bengali, so "rightmost
     # number" alone let a stray "2" outrank the real "৪৬" sitting beside it.
+    # Always None on this roll -- see below. Kept as a field so the OCR rows
+    # and the digitally-typeset ones stay the same shape.
     age = None
     at = next((i for i in range(len(tail) - 1, -1, -1)
                if bengali_int(tail[i]) is not None), None)
@@ -191,16 +207,16 @@ def parse_row(tokens: list[str]) -> dict | None:
         at = next((i for i in range(len(tail) - 1, -1, -1)
                    if AGE_SHAPE.match(tail[i])), None)
     if at is not None:
-        age = bengali_int(tail[at])
-        if age is None:
-            # See the module docstring: a Latin numeral here may be a
-            # correctly-shaped 6/9/0 or a ৪ misread as 8, and nothing in the
-            # response distinguishes them. Dropped rather than guessed.
-            remarks.append(
-                f"age read as Latin digits {tail[at]!r}, not stored -- "
-                "\u09e9/\u09ea transcribe as 6/8, so the value may be wrong "
-                "by decades"
-            )
+        # The token still has to be *located*, or it lands in the relative's
+        # name -- but its value is not stored. See the module docstring: the
+        # digit confusion measured here is visual (৩ read as 6, ৪ as 8), so it
+        # is present in Bengali-read tokens too, not only in the Latin ones
+        # it is visible in, and a decade-sized error in a column the search
+        # form *requires* is an elector nobody can find. An age we cannot
+        # vouch for is recorded as unknown, which the search spares.
+        # No remark: a blank age is uniform across every row of every
+        # scanned AC, so stamping a cause on all of them would say nothing
+        # about *this* row and would drown the remarks that do.
         tail = tail[:at]
     else:
         remarks.append("age not read")

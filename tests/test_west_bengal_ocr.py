@@ -76,7 +76,7 @@ def test_rows_survive_column_major_reading_order():
     parsed = parse_page(_page(rows, column_order=True))
     assert [r["full_name"] for r in parsed] == ["রমেশ মণ্ডল", "সীতা মণ্ডল"]
     assert [r["serial_no"] for r in parsed] == [1, 2]
-    assert [r["age"] for r in parsed] == [35, 30]
+    assert [r["age"] for r in parsed] == [None, None]
     assert [r["gender"] for r in parsed] == ["M", "F"]
     assert [r["local_ref"] for r in parsed] == ["WBX1234567", "WBX1234568"]
 
@@ -108,7 +108,6 @@ def test_a_latin_age_is_dropped_and_said_so_rather_than_stored():
     # the person searching for them; an absent one does not.
     row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "40"])
     assert row["age"] is None
-    assert "Latin digits" in row["remark"]
     assert row["full_relative_name"] == "হরি মণ্ডল"
 
 
@@ -116,13 +115,13 @@ def test_a_bengali_age_outranks_a_stray_latin_fragment_beside_it():
     # Observed on the first part OCR'd: the column rule sheds a "2" to the
     # right of the age. Taking the rightmost number lost the real age.
     row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "৪৬", "2"])
-    assert row["age"] == 46
+    assert row["age"] is None
     assert row["full_relative_name"] == "হরি মণ্ডল"
 
 
 def test_a_trailing_fragment_after_the_age_stays_out_of_the_relative_s_name():
     row = parse_row(["১", "রমেশ", "মণ্ডল", "স্বামী", "হরি", "মণ্ডল", "স্ত্রী", "২২", "N"])
-    assert row["age"] == 22
+    assert row["age"] is None
     assert row["full_relative_name"] == "হরি মণ্ডল"
 
 
@@ -139,6 +138,7 @@ def test_a_missing_epic_leaves_the_row_searchable():
     row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫"])
     assert row["local_ref"] == ""
     assert row["full_name"] == "রমেশ মণ্ডল"
+    assert row["age"] is None
     # Stated without a cause on purpose: a quarter of this roll's electors
     # genuinely have no EPIC, and a Vision response cannot tell an empty
     # cell from one it failed to read.
@@ -151,7 +151,6 @@ def test_a_split_epic_is_rejoined():
          "WB", "/", "42", "/", "287", "/", "000221"]
     )
     assert row["local_ref"] == "WB/42/287/000221"
-    assert row["age"] == 35
 
 
 def test_a_missing_gender_is_left_empty_not_inferred_from_the_relation():
@@ -159,7 +158,7 @@ def test_a_missing_gender_is_left_empty_not_inferred_from_the_relation():
     # record about a named person.
     row = parse_row(["১", "সীতা", "মণ্ডল", "স্বামী", "রমেশ", "মণ্ডল", "৩০"])
     assert row["gender"] == ""
-    assert row["age"] == 30
+    assert row["age"] is None
     assert "sex not read" in row["remark"]
 
 
@@ -191,3 +190,24 @@ def test_a_row_that_read_cleanly_carries_no_remark():
          "WBA1234567"]
     )
     assert row["remark"] == ""
+
+
+def test_no_age_is_stored_from_a_scanned_roll_however_clean_it_reads():
+    # Not squeamishness about a hard column: the digit errors measured on
+    # this roll are visual (৩ read as 6, ৪ as 8), so they sit in the
+    # Bengali-read ages exactly as much as in the Latin-read ones that make
+    # them visible -- a serial-monotonicity check put Bengali-read tokens at
+    # 92.5% increasing and Latin-read at 89.7%, close enough that script is
+    # no evidence of correctness. Year-of-birth is a *required* search field,
+    # so a decade-wrong age is an elector nobody can find, while an absent
+    # one is spared by the query. Unknown, never "not your match".
+    row = parse_row(
+        ["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫", "WBA1234567"]
+    )
+    assert row["age"] is None
+    # A blank age is uniform here, so it earns no remark of its own -- only
+    # an age token that could not be *found* does, since nothing got trimmed
+    # and the relative's name may carry the leftovers.
+    assert row["remark"] == ""
+    # The token is still located, or it would land in the relative's name.
+    assert row["full_relative_name"] == "হরি মণ্ডল"
