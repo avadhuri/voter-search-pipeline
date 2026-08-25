@@ -426,3 +426,42 @@ def test_build_combined_globs_by_the_states_own_raw_glob(tmp_path, monkeypatch):
 def test_an_unknown_state_is_named_rather_than_crashing_on_a_key_error():
     with pytest.raises(SystemExit, match="Unknown state: atlantis"):
         build_db._state_connector("atlantis")
+
+
+def test_a_republished_patch_leaves_the_catalog_pointing_at_a_file_that_exists(
+    tmp_path, monkeypatch
+):
+    """Rebuilding an already-published state bumps --patch, and the catalog
+    has to move with the filename.
+
+    The serving app builds each AC's filename from the catalog's `patch`
+    column and does not fall back to a lower patch, so a catalog and a set
+    of files that disagree about the patch is not a degraded state -- it is
+    a 404 on every AC of that state. `make build-db-ac` used to hardcode
+    patch 0 while the live catalogs were at p1, which is exactly this
+    disagreement produced by the supported path; the flag existed on
+    build_db.py all along and only the Makefile didn't pass it. Asserted at
+    a non-zero patch because every other test here builds at 0, which is
+    the one value where a dropped patch argument still happens to agree.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "F001.csv").write_text("placeholder\n")
+    _register(monkeypatch, "fakestate", _FakeLocalityConnector, raw_dir)
+
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["fakestate"], str(out_dir), contract="c1", patch=2)
+
+    cat_conn = sqlite3.connect(out_dir / "catalog" / "fakestate.sqlite")
+    try:
+        rows = cat_conn.execute(
+            "SELECT ac_code, contract, patch FROM ac_index"
+        ).fetchall()
+    finally:
+        cat_conn.close()
+
+    assert rows, "the build produced no catalog entries at all"
+    for ac_code, contract, patch in rows:
+        assert patch == 2
+        named = out_dir / "fakestate" / f"{ac_code}-{contract}.p{patch}.sqlite"
+        assert named.exists(), f"catalog names {named.name}, which was not built"
