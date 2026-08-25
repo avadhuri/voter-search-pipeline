@@ -5,12 +5,21 @@ SHREE550 (Shree-Lipi Bengali) -> Unicode Bengali transcoder, for West Bengal's
 
 WHY THIS EXISTS
 ---------------
-ceowestbengal.nic.in publishes 294 constituencies. Twenty-three of them are
-typeset in Latin script and have always been searchable. The other ~268 are
-Bengali, and their PDFs do carry a real text layer -- but not Unicode. The
-fonts are subsetted Type1C/CFF (`FontFile3`, distiller-named `MSTT31c*`) whose
-charset names are bare glyph ids (`/G03`, `/G05`), and there is no usable
-/ToUnicode CMap: AC186 carries 66 of them and they yield eight code points,
+ceowestbengal.nic.in publishes 294 constituencies. Classifying every one of
+them by what its parts are actually typeset in:
+
+    265  SHREE550 Bengali          this module
+     23  Latin                     always been searchable (AC139-AC160, AC186)
+      3  another Bengali font      AC022-AC024, Darjeeling -- see the end
+      3  no text layer at all      AC287, AC291, AC294 -- page scans, need OCR
+
+(Whole-AC verdicts. AC025 and AC026 sit in the 265 on a majority of their
+parts; see NOT COVERED BY THIS MODULE at the end.)
+
+So the Latin 23 were never the ceiling -- they were 8% of the state. The 265
+do carry a real text layer, but not Unicode. Their fonts are subsetted
+Type1C/CFF (`FontFile3`, distiller-named `MSTT31c*`) whose charset names are
+bare glyph ids (`/G03`, `/G05`), and there is no usable /ToUnicode CMap: AC186 carries 66 of them and they yield eight code points,
 all C1 control characters, three of which disagree with each other. So no PDF
 library can do this mapping, and this repo's own docs recorded those ACs as
 unsearchable "regardless of effort spent". They are not.
@@ -100,13 +109,30 @@ letter; gid 182 (221 rows) has one legible witness, ব্র⟦182⟧দেব,
 
 NOT COVERED BY THIS MODULE
 --------------------------
-AC022-AC026 -- KALIMPONG, DARJEELING, KURSEONG, SILIGURI, PHANSIDEWA, i.e.
-exactly and only Darjeeling district -- use a different glyph space entirely
-and decode to nothing recognisable here. A Gorkha-majority district's roll
-being typeset in a different font is not a coincidence; the untested
-hypothesis is Devanagari for Nepali. They need their own table, and
-`_is_shreelipi()` exists so a caller can tell the two apart rather than
-emitting garbage for five constituencies.
+A different glyph space, decoding to nothing recognisable here, appears in
+Darjeeling district and nowhere else. A Gorkha-majority district's roll being
+typeset in a different font is not a coincidence; the untested hypothesis is
+Devanagari for Nepali. It needs its own table, and `looks_like_shreelipi()`
+exists so a caller can tell the two apart rather than emitting garbage.
+
+But it is THREE constituencies, not the district's five. Classifying all
+1,320 of Darjeeling's parts individually:
+
+    AC022 KALIMPONG    219/219 parts  other font
+    AC023 DARJEELING   221/221 parts  other font
+    AC024 KURSEONG     223/223 parts  other font
+    AC025 SILIGURI      37/359 parts  other font -- the other 322 are SHREE550
+    AC026 PHANSIDEWA     8/298 parts  other font -- the other 290 are SHREE550
+
+Siliguri and Phansidewa are the district's two Bengali-majority
+constituencies and their rolls are mostly typeset accordingly, so writing
+off the district by name costs ~600,000 electors who are decodable right
+now. The font is decided per PART in west_bengal.py's `_parse_part`, not per
+AC, which is what makes serving them the default rather than a special case:
+the minority parts fall through to the "unrecognized Bengali-script font"
+branch, which blanks the name columns and says so in `remark` instead of
+guessing. Expect AC025 to land near 90% name-population and AC026 near 97%,
+and expect that to be the reason.
 """
 import unicodedata
 
