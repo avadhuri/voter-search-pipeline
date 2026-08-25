@@ -9,6 +9,30 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from bench_scoring import score_grouped, score_new, score_old, synthetic_tier
 
 
+# Wall-clock comparisons on a shared machine are a coin flip when taken once:
+# a single scheduler preemption inside the timed region is worth more than the
+# speedup being asserted. Measured on this repo at load 11.6 / 8 cores, with a
+# per-AC build running, the grouped path's five samples spanned 354-433ms
+# against flat's 441-488ms -- the two ranges barely miss overlapping, so the
+# single-shot form failed roughly one run in five while the underlying win was
+# never in doubt. Minimum-of-N is the standard robust statistic here: noise only
+# ever adds time, so the fastest sample is the one least contaminated by it, and
+# a real regression (the paths at parity, or inverted) still fails because it
+# moves the floor, not just the spread.
+TIMING_SAMPLES = 5
+
+
+def _best_ms(fn, samples=TIMING_SAMPLES):
+    """Fastest of `samples` wall-clock runs of `fn`, in milliseconds."""
+    best = None
+    for _ in range(samples):
+        t0 = time.perf_counter()
+        fn()
+        elapsed = (time.perf_counter() - t0) * 1000
+        best = elapsed if best is None else min(best, elapsed)
+    return best
+
+
 @pytest.fixture(scope="module")
 def rows():
     return synthetic_tier(1)  # ~40K rows, incl. short/garbled names
@@ -34,16 +58,11 @@ def test_old_and_new_scoring_produce_identical_top50(rows, algorithm):
 
 def test_new_scoring_is_meaningfully_faster(rows):
     """Regression guard: the whole point of vectorizing is a real wall-clock
-    win, not just equivalent output."""
-    t0 = time.perf_counter()
-    score_old(rows, "Ravi Kumar", "Anand Sharma", "wratio")
-    old_ms = (time.perf_counter() - t0) * 1000
+    win, not just equivalent output. Best-of-N -- see _best_ms."""
+    old_ms = _best_ms(lambda: score_old(rows, "Ravi Kumar", "Anand Sharma", "wratio"))
+    new_ms = _best_ms(lambda: score_new(rows, "Ravi Kumar", "Anand Sharma", "wratio"))
 
-    t0 = time.perf_counter()
-    score_new(rows, "Ravi Kumar", "Anand Sharma", "wratio")
-    new_ms = (time.perf_counter() - t0) * 1000
-
-    assert new_ms < old_ms
+    assert new_ms < old_ms, f"vectorized {new_ms:.0f}ms vs per-row {old_ms:.0f}ms"
 
 
 @pytest.mark.parametrize("algorithm", ["wratio", "jaro_winkler"])
@@ -62,15 +81,14 @@ def test_grouped_scoring_is_meaningfully_faster_across_constituencies(multi_ac_r
     """Only a multi-AC tier can show this -- score_fields_batch_by_group's
     concurrency is across groups, so a single-AC tier gets no speedup by
     design (see its docstring)."""
-    t0 = time.perf_counter()
-    score_new(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio")
-    flat_ms = (time.perf_counter() - t0) * 1000
+    flat_ms = _best_ms(
+        lambda: score_new(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio")
+    )
+    grouped_ms = _best_ms(
+        lambda: score_grouped(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio")
+    )
 
-    t0 = time.perf_counter()
-    score_grouped(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio")
-    grouped_ms = (time.perf_counter() - t0) * 1000
-
-    assert grouped_ms < flat_ms
+    assert grouped_ms < flat_ms, f"grouped {grouped_ms:.0f}ms vs flat {flat_ms:.0f}ms"
 
 
 def test_grouped_scoring_returns_per_constituency_timing(multi_ac_rows):
