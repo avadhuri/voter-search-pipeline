@@ -5,14 +5,22 @@ Regression test for the SHREE550 -> Unicode transcoder
 
 Each pair is (glyph-id sequence as hex, expected Unicode Bengali). The sources
 are real tokens lifted from ceowestbengal.nic.in's 2002 roll PDFs; the
-expectations are what the roll form's own printed headings say and what the
-portal's own English AC names transliterate to -- an independent oracle, not a
-snapshot of the decoder's current output.
+expectations are what the roll form's own printed headings say, what the
+portal's own English AC names transliterate to, and -- for the name tokens --
+what the name plainly is to anyone who reads Bengali. An independent oracle in
+all three cases, not a snapshot of the decoder's current output.
 
 Coverage is deliberate: the set exercises every structural rule in the
 transcoder -- half-form plus stem composition, pre-base matra reordering
 (including over a below-base phala), repha reordering in both its positions,
 the ka- and dha- hooks, the two-glyph digraphs, and conjuncts.
+
+The pairs come in two blocks, and the second one is the point. Page-1
+headings alone were enough to build the table and not enough to make it
+right: the first build over actual voter names turned up six unmapped glyphs
+and three placement bugs no heading exercises. Every name pair below records
+what the decoder emitted for it BEFORE that fix, so the regression each one
+guards is legible rather than implied.
 """
 import re
 
@@ -77,6 +85,37 @@ PAIRS = [
     ("4f82dd59829a", "উত্তর"),   # AC004
     ("65c2bc8252", "দক্ষিণ"),   # AC035
     ("7cc2a73a8294", "পশ্চিম"),   # AC005
+    # --- Names, not headings -------------------------------------------------
+    # Everything above is page-1 boilerplate, which turns out to be a narrow
+    # slice of the font: the headings never need glyph 85 at all, and every
+    # repha in them sits in the easy position. Voter names are what the decoder
+    # is FOR, and they broke it -- 9.5% of rows in a six-AC sample carried an
+    # unmapped glyph, and thousands more decoded to a wrong spelling with
+    # nothing malformed to notice.
+    #
+    # `n` is how many times this exact glyph run occurred in that sample;
+    # `was` is what the decoder emitted for it before the fix. The oracle is
+    # that these are ordinary, independently-known Bengali names -- Mondal,
+    # Barman, Naskar, Chakraborty, Murmu, Banerjee, Mukherjee -- not a snapshot
+    # of current output.
+    ("9455829b", "মণ্ডল"),                # n=3585  was মল       (85 unmapped)
+    ("859597d46f", "বর্ম্মন"),             # n=1261  was বম্র্মন
+    ("6fb22b9a", "নস্কর"),                # n=798   was নস্ক্র
+    ("3a825cdc82855782c4d4", "চক্রবর্তী"),  # n=213   was চক্রবতীর্
+    ("7cc255825782", "পণ্ডিত"),            # n=86    was পতি
+    ("7cd9b4c165", "প্রসাদ"),              # n=62    was প্রাদ     (180 unmapped)
+    ("24c68255c682", "কুণ্ডু"),            # n=54    was কুু
+    ("468252c1d4", "ঝর্ণা"),               # n=54    was ঝণার্
+    ("94c694c6d4", "মুর্মু"),              # n=52    was মুমুর্
+    ("85c2368294", "বঙ্কিম"),              # n=52    was বমি      (54 unmapped)
+    ("a636829a", "শঙ্কর"),                # n=51    was শর
+    ("afc66dc1d2a882", "সুধাংশু"),         # n=50    was সুধাং    (168 unmapped)
+    ("05c1a882cd5782c1a9", "আশুতোষ"),      # n=37    was আতোষ
+    ("8599c16fc13fc4d4", "ব্যানার্জী"),     # n=32    was ব্যানাজীর্
+    ("94564cc682", "মন্টু"),               # n=17    was মটু      (86 unmapped)
+    ("a694c1d4", "শর্মা"),                # n=13    was শমার্
+    ("94c62dc13fc4d4", "মুখার্জী"),        # n=4     was মুখাজীর্
+    ("65c1afcf859ac12ec4", "দাসবৈরাগী"),   # n=396   was দাসবরাগী (207 unmapped)
 ]
 
 # Page-1 headings, truncated. AC001 is SHREE550; AC022 (Kalimpong) is one of
@@ -120,6 +159,64 @@ def test_the_hooks_are_not_letters():
     assert decode(_pua("69"))[0] == "দ্ব"
     assert decode(_pua("69de"))[0] == "ধ"
 
+
+
+def test_a_repha_rides_the_whole_conjunct_not_just_its_base():
+    """বর্ম্মন (Barman) is drawn ব + ম(half) + ম + repha. Seating the repha
+    immediately before the base ম -- the consonant it is literally drawn on --
+    gives বম্র্মন, because the half ম ahead of it belongs to the same cluster
+    and the repha has to clear all of it. 1,261 of those in a six-AC sample,
+    against the most common surname in the state.
+    """
+    assert decode(_pua("859597d46f"))[0] == "বর্ম্মন"
+    # The simple case still has to work: nothing ahead of the base consonant,
+    # so the repha seats directly before it.
+    assert decode(_pua("8569ded48294c16f"))[0] == "বর্ধমান"
+
+
+def test_a_held_repha_lands_on_the_consonant_the_matra_belongs_to():
+    """A repha drawn after a MATRA is buffered, on the reading that it rides
+    the consonant still to come -- কার্তিক is drawn ক া র্ ত ি. That reading
+    is only right when a consonant actually follows. চক্রবর্তী ends there
+    instead (চ ক্র ব ত ী র্), and the font drew the repha last only because it
+    had to clear the ী. Appending it produced চক্রবতীর্ -- a word ending in a
+    hasant, which Bengali orthography does not allow, which is what makes this
+    self-detecting (see test_decode_leaves_no_stray_hasant).
+    """
+    assert decode(_pua("3a825cdc82855782c4d4"))[0] == "চক্রবর্তী"
+    assert decode(_pua("c26f85d4c13a822482"))[0] == "নির্বাচক"   # held, and used
+
+
+def test_a_held_repha_never_crosses_a_word_boundary():
+    """Worse than losing it: carried across the space it gets consumed by the
+    NEXT word's first consonant, corrupting two names instead of one and
+    leaving nothing malformed for the stray-hasant check to catch."""
+    both = decode(_pua("3a825cdc82855782c4d4" + "03" + "9455829b"))[0]
+    assert both == "চক্রবর্তী মণ্ডল"          # was 'চক্রবতী র্মল'
+
+
+def test_a_half_form_after_a_half_form_completes_it():
+    """A half form is completed either by a bare stem glyph or by the next
+    consonant -- and that next consonant may itself be a glyph that is usually
+    drawn as a half form. নস্কর is ন + স(half) + ক(half-glyph) + র; treating
+    the ক as another half gave নস্ক্র, i.e. a ra-phala that is not there."""
+    assert decode(_pua("6fb22b9a"))[0] == "নস্কর"
+    # Stem completion is unchanged: স(half) + stem is a whole স.
+    assert decode(_pua("b281"))[0] == "স"
+
+
+def test_the_glyphs_added_for_names_are_all_reachable():
+    """Six ids the page-1 headings never exercise. Each was silently absent
+    from thousands of names -- decode() reported them, which is how they were
+    found, and this pins them so a table edit cannot quietly drop one."""
+    for gid in (54, 85, 86, 168, 180, 207):
+        assert gid in sl.KNOWN_GIDS, gid
+    assert decode(_pua("36"))[0] == "ঙ্ক"
+    assert decode(_pua("55"))[0] == "ণ্ড"
+    assert decode(_pua("a8"))[0] == "শু"
+    assert decode(_pua("b4"))[0] == "স"
+    assert decode(_pua("56b4"))[0] == "ন্স"          # 86 is a half form
+    assert decode(_pua("cf85"))[0] == "বৈ"           # 207 is pre-base
 
 def test_unknown_glyphs_are_reported_not_silently_dropped():
     """A hole has to be visible. A missing letter is a bug report; a guessed

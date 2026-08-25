@@ -55,7 +55,7 @@ table was corrected against a Rosetta stone the source hands us for free:
 EVERY constituency's part-1 header states its own AC name and district in
 Bengali, and all 294 English AC names are already in
 states/meta/west_bengal_ac_meta.json. That is 228 independent parallel
-readings, and it is what `tests/test_west_bengal_shreelipi.py` replays.
+readings, scored offline while the table was being built.
 
 Measured across the 228 downloaded Bengali ACs: decoded-AC-name vs portal
 English, after romanising through ITRANS and reducing to a consonant
@@ -70,6 +70,20 @@ more reliable of the two: glyph 30 is ৎ because it makes বৎসর, জগ�
 simultaneously; glyph 100 is থ from স্থানে and হিন্দুস্থানী; glyph 51 is গু
 because the portal spells both ধূপগুড়ি and জলপাইগুড়ি "-GURI".
 
+The headings are a Rosetta stone but a narrow one, and a table that reads
+them perfectly can still be wrong where it matters. NAMES are a second,
+harder corpus, and the first build over them found six holes and three
+placement bugs the 228 headings never touch -- 9.5% of rows in a six-AC
+sample carried an unmapped glyph, and thousands more decoded to a wrong
+spelling with nothing malformed to notice. Those six (54 ঙ্ক, 85 ণ্ড, 86
+half-ন, 168 শু, 180 স, 207 ৈ) were each pinned the same contextual way,
+from several unrelated names at once rather than from glyph shape: 85 makes
+মণ্ডল, কুণ্ডু and পণ্ডিত simultaneously, 54 makes শঙ্কর and বঙ্কিম, 168
+makes আশুতোষ and সুধাংশু. `tests/test_west_bengal_shreelipi.py` carries the
+real glyph runs for all of them, with the pre-fix spelling recorded beside
+each -- that file is where this module's readings are pinned, both the
+headings and the names.
+
 DELIBERATELY UNMAPPED
 ---------------------
 A gid with no entry contributes NOTHING and is reported through decode()'s
@@ -77,6 +91,12 @@ A gid with no entry contributes NOTHING and is reported through decode()'s
 states/haryana_dkraj.py. A hole that shows up as a missing letter is a bug
 report; a hole filled with a guess is a corrupted name that still searches,
 still ranks, and passes every quality assertion we have.
+
+Two are known-open rather than merely absent, both left alone for want of
+evidence: gid 223 (671 rows) appears only as খাকড়⟦223⟧ু / ছেছড়⟦223⟧ু /
+ঝড়⟦223⟧ু, which reads like a third hook in the 220/222 family rather than a
+letter; gid 182 (221 rows) has one legible witness, ব্র⟦182⟧দেব, suggesting
+হ্ম. Neither is worth guessing at that sample size.
 
 NOT COVERED BY THIS MODULE
 --------------------------
@@ -122,7 +142,7 @@ CLUSTER_TAIL_GIDS = {217, 153}
 # Consonants drawn without their right-hand vertical, completed either by a
 # stem glyph or by the consonant that follows them in a conjunct.
 HALF_GIDS = {
-    43: "ক", 50: "গ", 108: "দ", 118: "ন", 149: "ম",
+    43: "ক", 50: "গ", 86: "ন", 108: "দ", 118: "ন", 149: "ম",
     163: "ল", 167: "শ", 174: "ষ", 178: "স",
 }
 STEM_GIDS = {129, 219}           # bare vertical: completes a preceding half form
@@ -133,6 +153,7 @@ PREBASE_GIDS = {
     204: "ে",   # ে
     205: "ে",   # ে
     206: "ে",   # ে
+    207: "ৈ",   # ৈ
 }
 
 # Letters the font draws as two ordinary glyphs. Applied after decoding: the
@@ -177,6 +198,7 @@ GID_MAP = {
     51: "গু",                                  # গু (ধূপগুড়ি, জলপাইগুড়ি)
     52: "ঘ",
     53: "ঙ",
+    54: "ঙ" + HASANT + "ক",                    # বঙ্কিম, শঙ্কর, দীপঙ্কর
     56: "ঙ" + HASANT + "গ",
 
     # cha-varga
@@ -202,6 +224,7 @@ GID_MAP = {
     81: "ঢ",
     82: "ণ",
     84: "ণ" + HASANT + "ঠ",
+    85: "ণ" + HASANT + "ড",                    # মণ্ডল -- 416 distinct given names, one surname
 
     # ta-varga (dental)
     87: "ত", 93: "ত", 94: "ত",
@@ -242,6 +265,7 @@ GID_MAP = {
     160: "ল" + HASANT + "প",
     161: "ল" + HASANT + "ল",
     166: "শ",
+    168: "শু",                                 # আশুতোষ, বিশু, কুলশুম (cf. 184 হু)
     169: "ষ",
     171: "ষ" + HASANT + "ট",
     172: "ষ" + HASANT + "ঠ",
@@ -249,6 +273,7 @@ GID_MAP = {
     175: "স",
     177: "স" + HASANT + "ট",
     179: "হ",
+    180: "স",                                 # another স variant: প্রসাদ, আসাদী
     184: "হু",                                 # (হুগলী)
     185: "ড়", 186: "ঢ়", 187: "য়",
     188: "ক" + HASANT + "ষ",
@@ -290,6 +315,46 @@ def _is_mark(ch):
     return len(ch) == 1 and unicodedata.category(ch) in ("Mn", "Mc")
 
 
+def _cluster_start(out, k):
+    """Index at which the conjunct cluster with its base consonant at out[k]
+    begins -- i.e. reaching back over any half forms drawn ahead of the base.
+
+    A repha rides the whole cluster, not its base consonant. বর্ম্মন is drawn
+    ব + ম(half) + ম + repha, and seating the repha immediately before the base
+    ম gave বম্র্মন -- 1,261 of them in a six-AC sample, against a surname
+    (Barman) that is the most common in the state.
+    """
+    while k > 0 and out[k - 1].endswith(HASANT):
+        k -= 1
+    return max(k, 0)
+
+
+def _flush_held(out, held):
+    """Attach a repha that never found a consonant AHEAD of it.
+
+    REPHA_GIDS buffers into `held` when the glyph before the repha is a matra,
+    on the reading that the repha rides the consonant still to come (কার্তিক:
+    ক া র্ ত ি). That reading is right only when a consonant actually follows.
+    When the word ends there instead, the repha rides the consonant the matra
+    itself belongs to -- the font draws it after that matra because it has to
+    clear the tallest glyph in the cluster. চক্রবর্তী is emitted চ ক্র ব ত ী র্,
+    and appending the held repha instead of re-seating it produced চক্রবতীর্,
+    a word ending in a hasant, which Bengali orthography does not allow.
+
+    Also called at a space: a repha left held across a word boundary would
+    otherwise be consumed by the NEXT word's first consonant, which corrupts
+    two words instead of one and leaves nothing malformed to notice.
+    """
+    if not held:
+        return
+    k = len(out)
+    while k > 0 and _is_mark(out[k - 1]):
+        k -= 1                                  # trailing matras
+    k = _cluster_start(out, max(k - 1, 0))      # base consonant, then its cluster
+    out[k:k] = held
+    del held[:]
+
+
 def decode(s):
     """Transcode a SHREE550 PUA-gid string to Unicode Bengali.
 
@@ -309,6 +374,7 @@ def decode(s):
         if gid is None:
             out.extend(pending)
             del pending[:]
+            _flush_held(out, held)
             half = False
             out.append(ch)
 
@@ -318,6 +384,7 @@ def decode(s):
         elif gid in SPACE_GIDS:
             out.extend(pending)
             del pending[:]
+            _flush_held(out, held)
             half = False
             out.append(" ")
 
@@ -343,7 +410,7 @@ def decode(s):
             if out and _is_mark(out[-1]):
                 held.append(REPHA)              # belongs to the consonant ahead
             else:
-                out.insert(max(len(out) - 1, 0), REPHA)
+                out.insert(_cluster_start(out, len(out) - 1), REPHA)
 
         elif gid in PREBASE_GIDS:
             pending.append(PREBASE_GIDS[gid])
@@ -356,8 +423,12 @@ def decode(s):
             half = False
 
         elif gid in HALF_GIDS:
-            out.append(HALF_GIDS[gid] + HASANT)
-            half = True
+            if half:
+                out.append(HALF_GIDS[gid])      # completes the half form ahead
+                half = False
+            else:
+                out.append(HALF_GIDS[gid] + HASANT)
+                half = True
 
         elif gid in GID_MAP:
             out.append(GID_MAP[gid])
@@ -374,7 +445,7 @@ def decode(s):
             unknown.append(gid)
 
     out.extend(pending)
-    out.extend(held)
+    _flush_held(out, held)
     text = "".join(out)
     for src, dst in DIGRAPHS:
         text = text.replace(src, dst)
