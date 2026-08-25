@@ -79,8 +79,45 @@ AGE_SHAPE = re.compile(r"^(?:[০-৯]{1,3}|\d{1,3})$")
 ROW_TOLERANCE = 1.0
 
 
+def _upside_down(page: dict) -> bool:
+    """Whether this page was fed into the scanner the wrong way up.
+
+    Vision lists a word's four vertices starting from its top-left *in
+    reading order*, so on a page it read at 180 degrees the first vertex is
+    the one furthest down and right in the page's own frame. That is the
+    rotation stated by the geometry rather than inferred from the text, and
+    it is unambiguous: measured over AC287/291/294, a page is either almost
+    entirely one winding or almost entirely the other, never a mix. The
+    minority of words that are neither (a skewed word whose corners do not
+    land on the extremes) are simply not counted.
+
+    Vision itself is unaffected -- it rotates each word and reads it
+    correctly, which is why the *names* on these pages have always been at
+    100%. What breaks is everything positional: group_rows() walks left to
+    right, so an inverted page comes back with every row's columns in
+    reverse, and parse_row() then reads the EPIC as the serial, swallows the
+    relation word's left side as the name, and finds no gender at all.
+    Whole pages of AC294 read that way -- name 100%, relative's name 4%.
+    """
+    up = down = 0
+    for block in page.get("blocks", []):
+        for para in block.get("paragraphs", []):
+            for word in para.get("words", []):
+                verts = word.get("boundingBox", {}).get("normalizedVertices") or []
+                if len(verts) != 4:
+                    continue
+                xs = [v.get("x", 0) for v in verts]
+                ys = [v.get("y", 0) for v in verts]
+                x0, y0 = verts[0].get("x", 0), verts[0].get("y", 0)
+                if x0 == min(xs) and y0 == min(ys):
+                    up += 1
+                elif x0 == max(xs) and y0 == max(ys):
+                    down += 1
+    return down > up
+
+
 def _words(response: dict) -> list[dict]:
-    """Every word on the page, with absolute pixel boxes.
+    """Every word on the page, with absolute pixel boxes, right way up.
 
     Vision returns normalized (0-1) vertices for PDF input and absolute ones
     for images; only the normalized form appears here, but both are handled
@@ -90,6 +127,7 @@ def _words(response: dict) -> list[dict]:
     if not fa or not fa.get("pages"):
         return []
     page = fa["pages"][0]
+    flip = _upside_down(page)
     w, h = page.get("width", 1), page.get("height", 1)
     out = []
     for block in page.get("blocks", []):
@@ -112,6 +150,21 @@ def _words(response: dict) -> list[dict]:
                     "y0": min(ys), "y1": max(ys),
                     "cy": (min(ys) + max(ys)) / 2,
                 })
+    if flip and out:
+        # Rotate the page, not the words: each box keeps its size and its
+        # text, and only its position is reflected through the page centre.
+        # Measured from the recorded extent rather than the page's declared
+        # width/height, which for an image response is the raster and for a
+        # PDF one is the point box -- reflecting through either would shift
+        # every row by the margin.
+        right = max(w["x1"] for w in out)
+        bottom = max(w["y1"] for w in out)
+        left = min(w["x0"] for w in out)
+        top = min(w["y0"] for w in out)
+        for w in out:
+            w["x0"], w["x1"] = left + right - w["x1"], left + right - w["x0"]
+            w["y0"], w["y1"] = top + bottom - w["y1"], top + bottom - w["y0"]
+            w["cy"] = (w["y0"] + w["y1"]) / 2
     return out
 
 

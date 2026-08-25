@@ -24,6 +24,13 @@ from states.west_bengal_ocr import (
     parse_row,
     window_paths,
 )
+from states.west_bengal_ocr import _upside_down
+
+
+def _reads_inverted(response):
+    """_upside_down()'s answer for a whole response, which is what the
+    fixtures build. It takes the page node, the way _words() calls it."""
+    return _upside_down(response["fullTextAnnotation"]["pages"][0])
 
 PAGE_W, PAGE_H = 1000.0, 1400.0
 ROW_H = 20.0
@@ -271,6 +278,61 @@ def test_a_word_never_joins_a_row_that_already_covers_it():
     rows = parse_page(page)
     assert [r["serial_no"] for r in rows] == [1, 2]
     assert [r["full_name"] for r in rows] == ["রমেশ মণ্ডল", "সীতা মণ্ডল"]
+
+
+def _inverted(response):
+    """The same page as if the sheet had been fed in the wrong way up.
+
+    Both halves of the rotation matter and a fixture that does only one of
+    them tests nothing: the word *positions* reflect through the page centre,
+    and each word's vertex list starts from a different corner, because Vision
+    emits vertices from a word's top-left in reading order and on an inverted
+    page that corner is the bottom-right of the page frame. The winding is the
+    only signal the reader has -- the text itself comes back perfectly
+    readable either way, which is exactly why this went unnoticed.
+    """
+    page = response["fullTextAnnotation"]["pages"][0]
+    for block in page["blocks"]:
+        for para in block["paragraphs"]:
+            for word in para["words"]:
+                verts = word["boundingBox"]["normalizedVertices"]
+                word["boundingBox"]["normalizedVertices"] = [
+                    {"x": 1.0 - v["x"], "y": 1.0 - v["y"]} for v in verts]
+    return response
+
+
+UPRIGHT_ROWS = [["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫", "WBA1234567"],
+                ["২", "সীতা", "মণ্ডল", "স্বামী", "রমেশ", "মণ্ডল", "স্ত্রী", "৩১", "WBA1234568"]]
+
+
+def test_a_page_scanned_upside_down_parses_to_the_same_rows():
+    """The whole point: an inverted page is a rotation, not damage. Vision
+    reads its text correctly, so the failure is silent -- names come back at
+    100% while the serial, the relative's name and the sex all come back
+    wrong, because those are decided by position."""
+    upright = parse_page(_page(UPRIGHT_ROWS))
+    inverted = parse_page(_inverted(_page(UPRIGHT_ROWS)))
+    assert upright == inverted
+    assert [r["serial_no"] for r in inverted] == [1, 2]
+    assert [r["full_relative_name"] for r in inverted] == ["হরি মণ্ডল", "রমেশ মণ্ডল"]
+    assert [r["gender"] for r in inverted] == ["M", "F"]
+
+
+def test_an_upright_page_is_not_flipped():
+    """The guard against the correction firing on the 95% of pages that were
+    always fine -- on those it has to be exactly a no-op."""
+    page = _page(UPRIGHT_ROWS)
+    assert not _reads_inverted(page)
+    assert parse_page(page) == parse_page(_page(UPRIGHT_ROWS))
+
+
+def test_orientation_is_read_from_the_geometry_not_the_text():
+    """The signal is the winding, and it has to be read off the page rather
+    than guessed from what the row says -- the text of an inverted page is
+    identical to an upright one's, which is the whole reason this was
+    invisible until the columns were counted."""
+    assert not _reads_inverted(_page(UPRIGHT_ROWS))
+    assert _reads_inverted(_inverted(_page(UPRIGHT_ROWS)))
 
 
 # --------------------------------------------------------------------------
