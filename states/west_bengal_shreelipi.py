@@ -403,9 +403,15 @@ def looks_like_shreelipi(page_text):
     the result is Bengali: every roll's page-1 heading carries the same few
     boilerplate words, and under the wrong table none of them appear.
 
-    Measured over the 259 constituencies downloaded so far: true for all 228
-    Bengali ACs this table covers, false for all five Darjeeling ACs, the three
-    text-layerless scans, and the 23 Latin-typeset ACs (which do not need it).
+    Measured over all 294 constituencies, sampling three parts of each: true
+    for the 265 Bengali ACs this table covers, false for the 23 Latin-typeset
+    ACs (which do not need it), the three text-layerless page scans (AC287,
+    AC291, AC294) and Darjeeling.
+
+    Darjeeling is not five whole ACs, which is why the decision is made per
+    part rather than per AC: AC022-AC024 are Devanagari throughout, but AC025
+    and AC026 are mixed -- 322 of AC025's 359 parts and 290 of AC026's 298 are
+    Shree-Lipi Bengali, and only the remainder are Devanagari.
     """
     text, _ = decode(page_text)
     return any(a in text for a in _ANCHORS)
