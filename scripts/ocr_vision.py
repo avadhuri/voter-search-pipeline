@@ -79,6 +79,30 @@ FREE_PAGES_PER_MONTH = 1000
 # sixth page.
 PAGES_PER_REQUEST = 5
 
+
+def _bill(pages: int, free_left: int = 0) -> str:
+    """What `pages` costs, given how much of the free tier is left.
+
+    Free pages default to *none*, which is the honest default and not the
+    obvious one. The tier is 1000 pages per project per calendar month and
+    nothing on disk records how many are spent -- that state lives in Cloud
+    Billing. This line used to subtract all 1000 unconditionally, which is
+    right on the month's first run and wrong on every one after it: once the
+    11,407-page West Bengal run had eaten August's allowance, every later
+    estimate that month still quoted $0.00 for pages that really billed. An
+    estimate that reads low is worse than one that reads high, because the
+    whole point of printing it is to be the thing an operator decides on.
+    Pass --free-pages-left when the allowance is known to be unspent.
+    """
+    return f"${max(pages - max(free_left, 0), 0) * PRICE_PER_1K / 1000:.2f}"
+
+
+def _free_note(free_left: int) -> str:
+    if free_left > 0:
+        return f" ({free_left} of the month's {FREE_PAGES_PER_MONTH} free pages applied)"
+    return (f" (assumes none of the month's {FREE_PAGES_PER_MONTH} free pages "
+            f"are left; pass --free-pages-left if they are)")
+
 # Parts OCR'd concurrently. Each is a serial chain of synchronous requests, so
 # this is the only parallelism there is. Vision's per-project request quota is
 # 1800/minute by default and ten workers come nowhere near it; the real limit
@@ -396,7 +420,7 @@ def _annotate_part(ac: str, stem: str, total: int, bucket: str, project: str,
 
 def stage_annotate(acs, raw_dir: Path, bucket: str, project: str, out_dir: Path,
                    dry_run: bool, limit: int | None, workers: int,
-                   retry_failed: bool = False) -> None:
+                   retry_failed: bool = False, free_left: int = 0) -> None:
     plan: list[tuple[str, str, int]] = []
     for ac in acs:
         zip_path = raw_dir / f"{ac}.zip"
@@ -414,10 +438,9 @@ def stage_annotate(acs, raw_dir: Path, bucket: str, project: str, out_dir: Path,
 
     pages = sum(n for _, _, n in plan)
     _say(f"{len(plan)} parts, {pages} pages, {pending} not yet OCR'd")
-    billable = max(pending - FREE_PAGES_PER_MONTH, 0)
-    _say(f"bill for this run: {pending} pages, {FREE_PAGES_PER_MONTH} free/month "
-         f"=> ${billable * PRICE_PER_1K / 1000:.2f} "
-         f"(a full re-OCR would be ${max(pages - FREE_PAGES_PER_MONTH, 0) * PRICE_PER_1K / 1000:.2f})")
+    _say(f"bill for this run: {pending} pages => {_bill(pending, free_left)}"
+         f"{_free_note(free_left)}")
+    _say(f"  (a full re-OCR would be {_bill(pages, free_left)})")
     if dry_run:
         _say("--dry-run: nothing submitted")
         return
@@ -487,6 +510,11 @@ def main(argv=None) -> int:
                         "page error (transient Vision failures were checkpointed "
                         "as done before this script retried them). Pair with "
                         "--dry-run first: it re-bills those pages.")
+    p.add_argument("--free-pages-left", type=int, default=0,
+                   help=f"how many of this month's {FREE_PAGES_PER_MONTH} free "
+                        "Vision pages are still unspent (default 0 -- the "
+                        "script cannot read Cloud Billing, so it quotes the "
+                        "bill owed if none are)")
     p.add_argument("--dry-run", action="store_true",
                    help="report the page-exact bill, then stop")
     a = p.parse_args(argv)
@@ -500,7 +528,8 @@ def main(argv=None) -> int:
         # `upload --dry-run` should still cost out what it is uploading for.
         if a.stage != "upload" or a.dry_run:
             stage_annotate(acs, a.raw_dir, a.bucket, a.project, a.out_dir,
-                           a.dry_run, a.limit, a.workers, a.retry_failed)
+                           a.dry_run, a.limit, a.workers, a.retry_failed,
+                           a.free_pages_left)
     if a.stage in ("backup", "all") and not a.dry_run:
         stage_backup(acs, a.bucket, a.out_dir)
     return 0

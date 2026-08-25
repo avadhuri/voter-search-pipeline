@@ -99,3 +99,22 @@ def test_a_permanent_page_error_is_written_through_rather_than_looping(monkeypat
     out = ocr_vision._annotate_window("gs://b/x.pdf", [1, 2], "proj")
     assert len(calls) == 1
     assert [r["error"]["message"] for r in out] == ["Bad image data."] * 2
+
+
+# The estimate is the number an operator decides on, so the direction it errs
+# in matters more than its precision: the free tier is per calendar month and
+# unreadable from here, and subtracting it unconditionally quoted $0.00 for
+# real charges on every run after the month's first.
+def test_the_bill_assumes_no_free_pages_are_left():
+    assert ocr_vision._bill(20) == "$0.03"
+    assert ocr_vision._bill(1000) == "$1.50"
+
+
+def test_a_stated_free_allowance_is_applied():
+    assert ocr_vision._bill(20, free_left=1000) == "$0.00"
+    assert ocr_vision._bill(1200, free_left=1000) == "$0.30"
+
+
+def test_the_note_says_which_assumption_the_bill_was_made_under():
+    assert "pass --free-pages-left" in ocr_vision._free_note(0)
+    assert "applied" in ocr_vision._free_note(1000)
