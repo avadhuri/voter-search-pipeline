@@ -15,6 +15,11 @@ directory and covers all 36 states/UTs (see that directory's README for
 provenance). That file has been in the repo, correct and unread by any code,
 since the source-URL work landed -- this module is what wires it up.
 
+It is *derived*, not hand-maintained: `scripts/build_roll_years.py`
+(`make roll-years`) regenerates it from the `state_roll_years.xlsx` it was
+committed beside, and a test fails if the two have drifted. Fix a wrong year
+in the workbook and regenerate; editing the JSON alone will not survive.
+
 Keyed by ECI state code (S01, S07, U05, ...), so mapping a registry
 `state_id` onto it needs the same explicit table `source_urls.py` keeps for
 its workbooks, and for the same reason: the mapping is asserted per state

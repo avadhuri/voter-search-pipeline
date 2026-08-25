@@ -12,7 +12,15 @@ columns — Karnataka excluded, since its own CSV source link needs no
 per-part table).
 
 `state_roll_years.json` / `.xlsx` gives each state/UT's roll year, source
-host, and format at a glance.
+host, and format at a glance. **The `.xlsx` is the source of truth and the
+`.json` is derived from it** — `make roll-years` regenerates the JSON, and
+`tests/test_roll_years.py` fails if the committed one has drifted. The JSON
+is what stays committed and what `states/roll_years.py` reads, because a
+wrong year here mis-stamps tens of millions of rows and a JSON diff is
+reviewable in a pull request where an `.xlsx` diff is a binary blob. Correct
+a year in the workbook, then regenerate; editing the JSON alone won't
+survive the next run. The other 35 workbooks in this directory have no
+derived counterpart and are read directly by `states/source_urls.py`.
 
 **Coverage: every state/UT except Jammu & Kashmir** (`U08` in
 `state_roll_years.json` — its ECI portal entry is `"ceo.jk.gov.in (Coming

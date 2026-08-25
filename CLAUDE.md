@@ -104,7 +104,12 @@ downstream can catch it — the rows parse, score and rank exactly as they
 should. `states/roll_years.py` resolves it per state (registry entry's own
 `roll_year`, else `states/meta/sir_source_urls/state_roll_years.json` by
 ECI state code, else 2002); a new state declares its ECI code in that
-module's `STATE_CODES` and needs nothing else. `--roll-year YYYY` forces
+module's `STATE_CODES` and needs nothing else. That JSON is **derived, not
+hand-maintained** — `make roll-years` regenerates it from the
+`state_roll_years.xlsx` it shipped beside (a received artifact, see that
+directory's README), and `tests/test_roll_years.py` fails if the committed
+JSON has drifted from the workbook. A wrong year gets fixed in the workbook
+and regenerated; editing the JSON alone won't survive the next run. `--roll-year YYYY` forces
 one year across the whole build and exists only as an escape hatch — omit
 it unless you specifically mean to.
 

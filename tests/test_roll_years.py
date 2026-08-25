@@ -16,6 +16,7 @@ import sqlite3
 import pytest
 
 import build_db
+import build_roll_years
 from states import roll_years
 from states.karnataka import KarnatakaConnector
 
@@ -165,3 +166,53 @@ def test_an_explicit_override_wins_over_every_states_own_year(tmp_path, monkeypa
     cat = sqlite3.connect(out_dir / "catalog" / "karnataka.sqlite")
     assert cat.execute("SELECT roll_year FROM state_coverage").fetchone()[0] == 1999
     cat.close()
+
+
+# --- the mapping's own provenance ------------------------------------------
+
+def test_committed_json_matches_the_workbook_it_is_derived_from():
+    """The JSON is a projection of state_roll_years.xlsx, and until
+    build_roll_years.py existed nothing said so: both files were committed
+    together with no code linking them, so the only thing asserting they
+    agreed was that someone had once made them agree.
+
+    That is the wrong shape for a value that mis-stamps tens of millions of
+    rows when wrong. Regenerating here and comparing rendered bytes means a
+    hand-edit of either file -- or a new drop that updates only one of them
+    -- fails the suite instead of reaching a build."""
+    derived = build_roll_years.render(build_roll_years.roll_years_from_workbook())
+    with open(build_roll_years.JSON_PATH, encoding="utf-8") as f:
+        committed = f.read()
+    assert committed == derived, (
+        "state_roll_years.json has drifted from state_roll_years.xlsx. "
+        "Run `make roll-years` and commit the result -- and if the JSON is "
+        "the one that is right, the workbook is what needs fixing, since it "
+        "is the source of truth."
+    )
+
+
+def test_generator_output_is_what_roll_years_actually_reads():
+    """Round-trip the generator's own output through the consumer, so the
+    two can't agree on a file they disagree about the shape of."""
+    derived = json.loads(
+        build_roll_years.render(build_roll_years.roll_years_from_workbook())
+    )
+    for state_id, code in roll_years.STATE_CODES.items():
+        assert code in derived, f"{state_id} declares {code}, absent from the workbook"
+        assert derived[code]["roll_year"] == roll_years.resolve_roll_year(state_id)
+
+
+def test_a_renamed_workbook_column_fails_loudly():
+    """Headers are matched by name, so a future drop that reorders or extends
+    the sheet still resolves -- but one that *renames* a column must raise
+    rather than emit a file full of nulls, which is what silently wrong looks
+    like here."""
+    original = dict(build_roll_years.COLUMNS)
+    try:
+        build_roll_years.COLUMNS["Roll Yr"] = "roll_year"
+        del build_roll_years.COLUMNS["Roll Year"]
+        with pytest.raises(ValueError, match="not in"):
+            build_roll_years.roll_years_from_workbook()
+    finally:
+        build_roll_years.COLUMNS.clear()
+        build_roll_years.COLUMNS.update(original)
