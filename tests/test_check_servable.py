@@ -247,3 +247,73 @@ def test_a_per_ac_directory_is_checked_file_by_file(tmp_path, monkeypatch):
     assert (out_dir / "catalog" / "faketest.sqlite").exists()
     assert "no district" in _messages(str(out_dir), "BLOCKER")
 
+
+
+# --- the sample view -------------------------------------------------------
+#
+# Not a check: whether a romanization is *name-shaped* is the one judgement
+# in this script a human has to make. `geMdI kaura` for गेंदी कौर passes every
+# assertion here -- it is a perfectly good fuzzy-match key and a name nobody
+# would type or read. So these tests cover the properties that make the view
+# trustworthy to look at, not the names themselves.
+
+def _named_db(tmp_path, rows, with_latin=True):
+    """A voters table built by hand, so a test can control every name.
+
+    The shared _Connector emits two identical rows, which is right for the
+    checks and useless for sampling.
+    """
+    path = str(tmp_path / "named.sqlite")
+    conn = sqlite3.connect(path)
+    latin_col = ", full_name_latin TEXT" if with_latin else ""
+    conn.execute(f"CREATE TABLE voters (state TEXT, full_name TEXT{latin_col})")
+    if with_latin:
+        conn.executemany("INSERT INTO voters VALUES (?, ?, ?)",
+                         [("faketest", n, l) for n, l in rows])
+    else:
+        conn.executemany("INSERT INTO voters VALUES (?, ?)",
+                         [("faketest", n) for n, _ in rows])
+    conn.commit()
+    return path, conn
+
+
+def test_the_sample_is_the_same_rows_for_everyone_who_runs_it(tmp_path):
+    """The load-bearing property. A sample seeded from Python's own hash()
+    would be a different set of rows in every process, so "the 100 rows I
+    looked at" and "the 100 rows you looked at" would silently be different
+    data -- which defeats the entire point of sending someone a sample."""
+    rows = [(f"नाम{i}", f"naama{i}") for i in range(500)]
+    path, conn = _named_db(tmp_path, rows)
+    first = check_servable.sample_names(conn, "faketest", 20, check_servable._seeded("faketest"))
+    second = check_servable.sample_names(conn, "faketest", 20, check_servable._seeded("faketest"))
+    assert first == second
+    assert len(first) == 20
+
+
+def test_the_sample_is_drawn_from_across_the_state_not_off_the_front(tmp_path):
+    """An extraction that degrades partway through -- a font boundary, a
+    switch to scanned pages -- is invisible in a LIMIT 100, because the front
+    of the file is the part that worked."""
+    rows = [(f"नाम{i}", f"naama{i}") for i in range(1000)]
+    path, conn = _named_db(tmp_path, rows)
+    got = check_servable.sample_names(conn, "faketest", 40, check_servable._seeded("faketest"))
+    indices = sorted(int(n.removeprefix("नाम")) for n, _ in got)
+    assert max(indices) > 700, f"sample never reached the tail: {indices[-5:]}"
+
+
+def test_a_file_predating_the_latin_columns_samples_nothing_rather_than_raising(tmp_path):
+    """Same stale-per-AC-file case the checks handle: the column simply is
+    not there, and querying one that isn't raises. A contributor pointing
+    this at an older build should get an empty sample, not a traceback."""
+    path, conn = _named_db(tmp_path, [("नाम", "naama")], with_latin=False)
+    assert check_servable.sample_names(conn, "faketest", 10, check_servable._seeded("x")) == []
+
+
+def test_a_name_the_scheme_could_not_romanize_is_marked_in_the_view(tmp_path, capsys):
+    """Residue and an empty romanization are the two failures a reader would
+    otherwise have to spot by eye, in a wall of 100 names."""
+    path, _ = _named_db(tmp_path, [("गेंदी", "geMdI"), ("കൃഷ്ണൻ", "kRRiShNaൻ"), ("बीना", "")])
+    check_servable.print_samples(path, {"faketest"}, 10)
+    out = capsys.readouterr().out
+    assert "residue: ൻ" in out
+    assert "NO full_name_latin" in out

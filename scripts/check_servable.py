@@ -32,6 +32,7 @@ Usage:
     python -m check_servable data/db/multi_state_2002.sqlite
     python -m check_servable data/db/ac            # per-AC output directory
     python -m check_servable data/db/ac --state telangana
+    python -m check_servable data/db/ac --state telangana --sample-names
 
 Exits non-zero if anything is a BLOCKER. WARNINGs are printed and don't
 fail: they're degradations a maintainer may knowingly ship (a source with no
@@ -40,7 +41,9 @@ locality data, a script whose romanization is imperfect), not breakage.
 import argparse
 import collections
 import glob
+import hashlib
 import os
+import random
 import sqlite3
 import sys
 
@@ -58,6 +61,91 @@ PLAUSIBLE_ROLL_YEARS = range(2002, 2007)
 # How many offending rows to name in a finding. Enough to see the pattern
 # (one part? one AC? scattered?) without printing a million rows.
 EXAMPLES = 3
+
+
+# Rows to show per state for --sample-names. Enough that a systematically
+# broken romanization is obvious and a human will actually read them all.
+SAMPLE_DEFAULT = 100
+
+
+def _seeded(state_id):
+    """A per-state RNG that is the same on every machine and every run.
+
+    Python's own hash() is salted per process, so seeding from it would make
+    "the sample" mean a different set of rows to each person looking at it --
+    which is the whole point of the sample. Same discipline as the serving
+    repo's seeded query-distortion.
+    """
+    digest = hashlib.sha256(state_id.encode("utf-8")).digest()
+    return random.Random(int.from_bytes(digest[:8], "big"))
+
+
+def sample_names(conn, state_id, k, rng):
+    """Up to `k` (native, romanized) pairs for one state, spread across the
+    file rather than taken from the front.
+
+    Rows are reached by seeking to random rowids, not by scanning: a state
+    can be tens of millions of rows and this runs on a contributor's laptop
+    before a push. `rowid >= ?` then scans forward to the next matching row,
+    so a rowid landing in a gap or on another state still yields something
+    instead of nothing.
+    """
+    cols = _columns(conn)
+    if "full_name_latin" not in cols:
+        return []
+    bounds = conn.execute(
+        "SELECT MIN(rowid), MAX(rowid) FROM voters WHERE state = ?", (state_id,)
+    ).fetchone()
+    if not bounds or bounds[0] is None:
+        return []
+    low, high = bounds
+    seen, pairs = set(), []
+    # Over-draw: duplicates are ordinary (a common name, or two seeks landing
+    # on the same row), so drawing exactly k would usually return fewer.
+    for _ in range(k * 4):
+        if len(pairs) >= k:
+            break
+        row = conn.execute(
+            "SELECT full_name, full_name_latin FROM voters "
+            "WHERE rowid >= ? AND state = ? AND full_name <> '' LIMIT 1",
+            (rng.randint(low, high), state_id),
+        ).fetchone()
+        if not row or row[0] in seen:
+            continue
+        seen.add(row[0])
+        pairs.append((row[0], row[1] or ""))
+    return pairs
+
+
+def print_samples(path, state_ids, k):
+    """Print the sample for every state in `path`, one block per state.
+
+    Deliberately prints rather than judging: whether a romanization is
+    *name-shaped* is the one thing in this whole script a human has to decide
+    and no assertion can. Everything else here is a check; this is a view.
+    """
+    per_state = collections.defaultdict(list)
+    for _label, conn in _connections(path):
+        for state_id in [r[0] for r in conn.execute("SELECT DISTINCT state FROM voters")]:
+            if state_ids and state_id not in state_ids:
+                continue
+            if len(per_state[state_id]) >= k:
+                continue
+            rng = _seeded(state_id + _label)
+            per_state[state_id].extend(sample_names(conn, state_id, k, rng))
+    for state_id in sorted(per_state):
+        pairs = per_state[state_id][:k]
+        script = (STATE_CONNECTORS.get(state_id) or {}).get("script", "latin")
+        print(f"\n=== {state_id} (script={script!r}), {len(pairs)} sampled ===")
+        width = max([len(n) for n, _ in pairs] + [4])
+        for native, latin in pairs:
+            residue = latin_residue(latin)
+            flag = "  <-- residue: " + "".join(residue) if residue else ""
+            if not latin:
+                flag = "  <-- NO full_name_latin"
+            print(f"  {native:<{width}}  |  {latin}{flag}")
+    if not per_state:
+        print("no rows found to sample")
 
 
 class Finding:
@@ -326,9 +414,20 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("path", help="a built .sqlite, or a per-AC output directory")
     parser.add_argument("--state", help="comma-separated state_ids to check (default: all present)")
+    parser.add_argument(
+        "--sample-names", nargs="?", type=int, const=SAMPLE_DEFAULT, default=None,
+        metavar="N",
+        help=f"instead of checking, print N (default {SAMPLE_DEFAULT}) native names "
+             f"beside their romanization, per state, for a human to eyeball",
+    )
     args = parser.parse_args(argv)
 
     state_ids = set(args.state.split(",")) if args.state else None
+
+    if args.sample_names is not None:
+        print_samples(args.path, state_ids, args.sample_names)
+        return 0
+
     findings = check(args.path, state_ids)
 
     for level in ("BLOCKER", "WARNING", "OK"):
