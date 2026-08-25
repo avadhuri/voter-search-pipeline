@@ -9,6 +9,27 @@ don't need to change.
 from dataclasses import dataclass, field
 
 
+class UnparseableRollError(Exception):
+    """Raised by parse_raw() for an AC this connector cannot parse at all.
+
+    This is a *declared outcome*, not a failure. Some states publish a
+    minority of their ACs as page scans with no text layer; a connector
+    that refuses to guess at those is behaving correctly, and the build
+    treats them as absent rather than aborting.
+
+    That distinction is the whole point of having a named exception here
+    instead of a state-private one. `build_db` catches this and only this:
+    every other exception out of parse_raw() is an unexpected fault and
+    still stops the build loudly, per the house rule. Before this existed,
+    one scanned Haryana AC (HR18 Samalkha) killed a two-state per-AC build
+    after 44 ACs had already been written -- taking West Bengal, which had
+    not started, and every catalog, which is written last, down with it.
+
+    A connector raising this must name the AC and say why, because the
+    build's summary is the only place a reader learns the AC is missing.
+    """
+
+
 @dataclass
 class Constituency:
     """One assembly constituency (AC), as listed by a state's electoral portal."""

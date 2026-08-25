@@ -64,6 +64,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from states.base import UnparseableRollError
 from states.registry import STATE_CONNECTORS
 from states.roll_years import resolve_roll_year, roll_year_for
 from states.source_urls import resolve_source_url
@@ -470,30 +471,50 @@ def build_multi_state(state_ids, db_path, roll_year=None):
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_total = 0
         acs_with_locality = set()
+        unparseable = []
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
             ac = _resolve_ac(ac_code, ac_lookup, state_id)
             with open(path, "rb") as f:
                 raw = f.read()
-            records = connector.parse_raw(raw, ac, state_roll_year)
+            try:
+                records = connector.parse_raw(raw, ac, state_roll_year)
+            except UnparseableRollError as exc:
+                unparseable.append(ac_code)
+                print(f"  [{state_id}] {ac_code} UNPARSEABLE, skipped: {exc}")
+                continue
             conn.executemany(INSERT_SQL, _records_to_rows(records))
             state_total += len(records)
             if any(r.locality for r in records):
                 acs_with_locality.add(ac_code)
             print(f"  [{state_id}] {ac_code}: {len(records)} records")
-        print(f"{state_id}: {state_total} records from {len(paths)} files (roll year {state_roll_year})")
+        print(f"{state_id}: {state_total} records from {len(paths) - len(unparseable)} files (roll year {state_roll_year})")
+        if unparseable:
+            print(f"  [{state_id}] {len(unparseable)} of {len(paths)} ACs were "
+                  f"unparseable and are absent from this build: {', '.join(sorted(unparseable))}")
+        if paths and len(unparseable) == len(paths):
+            raise UnparseableRollError(
+                f"{state_id}: all {len(paths)} ACs were unparseable -- refusing to "
+                f"record the state as built. Check the raw files and the connector."
+            )
         grand_total += state_total
 
-        if not paths:
+        # An unparseable AC is absent from this build, so it is neither
+        # digitized nor a candidate for locality coverage. Counting it as
+        # either would publish a state that looks more complete than it is
+        # -- and "full" locality coverage is exactly the kind of claim the
+        # serving app's freshness panel reports without re-deriving.
+        built_count = len(paths) - len(unparseable)
+        if not built_count:
             locality_coverage = "none"
-        elif len(acs_with_locality) == len(paths):
+        elif len(acs_with_locality) == built_count:
             locality_coverage = "full"
         elif acs_with_locality:
             locality_coverage = "partial"
         else:
             locality_coverage = "none"
         conn.execute(STATE_COVERAGE_INSERT_SQL, (
-            state_id, info["label"], len(ac_lookup), len(paths),
+            state_id, info["label"], len(ac_lookup), built_count,
             locality_coverage, built_at, state_roll_year,
         ))
 
@@ -561,13 +582,27 @@ def _build_one_ac(task):
             "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
             "row_count": row_count, "file_size_bytes": os.path.getsize(ac_db_path),
             "has_locality": bool(localities), "localities": localities, "skipped": True,
+            "unparseable": None,
             "translit": BackfillResult(0, 0, []),
         }
 
     connector = connector_cls()
     with open(path, "rb") as f:
         raw = f.read()
-    records = connector.parse_raw(raw, ac, roll_year)
+    try:
+        records = connector.parse_raw(raw, ac, roll_year)
+    except UnparseableRollError as exc:
+        # Returned rather than raised: this runs in a pool worker, and an
+        # exception here reaches the parent through fut.result(), which
+        # aborts the whole build -- every other state included. A connector
+        # declaring one AC unparseable is not a reason to lose the other
+        # 43. Anything else still propagates and still stops the build.
+        return {
+            "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
+            "row_count": 0, "file_size_bytes": 0, "has_locality": False,
+            "localities": [], "skipped": False, "unparseable": str(exc),
+            "translit": BackfillResult(0, 0, []),
+        }
 
     ac_conn = sqlite3.connect(ac_db_path)
     ac_conn.executescript(VOTERS_SCHEMA)
@@ -581,6 +616,7 @@ def _build_one_ac(task):
         "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
         "row_count": len(records), "file_size_bytes": os.path.getsize(ac_db_path),
         "has_locality": bool(localities), "localities": localities, "skipped": False,
+        "unparseable": None,
         # Carried up rather than printed here: this runs in a pool worker, so
         # its stdout interleaves with every other AC's. build_per_ac() sums
         # them and reports once per state.
@@ -638,14 +674,37 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
             tasks.append((state_id, connector_cls, path, ac_db_path, contract, patch, ac, state_roll_year))
 
         results = []
+        unparseable = []
         pool_size = max(1, min(workers, len(tasks) or 1))
         with ProcessPoolExecutor(max_workers=pool_size) as pool:
             futures = [pool.submit(_build_one_ac, t) for t in tasks]
             for fut in as_completed(futures):
                 result = fut.result()
+                if result["unparseable"]:
+                    unparseable.append(result)
+                    print(f"  [{state_id}] {result['ac_code']} UNPARSEABLE, skipped: "
+                          f"{result['unparseable']}")
+                    continue
                 results.append(result)
                 tag = "skip (already built)" if result["skipped"] else "built"
                 print(f"  [{state_id}] {result['ac_code']} ({tag}): {result['row_count']} records")
+
+        if unparseable:
+            # Restated after the per-AC firehose, because the individual line
+            # scrolls past in a build of hundreds of ACs and a silently
+            # smaller state is exactly what the catalog then publishes.
+            print(f"  [{state_id}] {len(unparseable)} of {len(tasks)} ACs were "
+                  f"unparseable and are absent from this build: "
+                  f"{', '.join(r['ac_code'] for r in sorted(unparseable, key=lambda r: r['ac_code']))}")
+        if tasks and not results:
+            # Skipping a minority is the designed behaviour; skipping all of
+            # them means the connector or the raw files are broken, and
+            # publishing an empty catalog would take the state off the site
+            # while every check downstream still reads green.
+            raise UnparseableRollError(
+                f"{state_id}: all {len(tasks)} ACs were unparseable -- refusing to "
+                f"write an empty catalog. Check the raw files and the connector."
+            )
 
         results.sort(key=lambda r: r["ac_code"])
         state_total = sum(r["row_count"] for r in results)
@@ -671,13 +730,16 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
             for loc in r["localities"]
         ]
 
-        print(f"{state_id}: {state_total} records across {len(paths)} AC file(s) "
+        print(f"{state_id}: {state_total} records across {len(results)} AC file(s) "
               f"({pool_size} worker(s), roll year {state_roll_year})")
         grand_total += state_total
 
-        if not paths:
+        # results excludes unparseable ACs, so it -- not len(paths) -- is
+        # how many ACs this state actually has files for. See the same
+        # correction in build_multi_state above.
+        if not results:
             locality_coverage = "none"
-        elif len(acs_with_locality) == len(paths):
+        elif len(acs_with_locality) == len(results):
             locality_coverage = "full"
         elif acs_with_locality:
             locality_coverage = "partial"
@@ -688,7 +750,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
         cat_conn = sqlite3.connect(catalog_path)
         cat_conn.executescript(CATALOG_SCHEMA)
         cat_conn.execute(STATE_COVERAGE_INSERT_SQL, (
-            state_id, info["label"], len(ac_lookup), len(paths),
+            state_id, info["label"], len(ac_lookup), len(results),
             locality_coverage, built_at, state_roll_year,
         ))
         cat_conn.executemany(AC_INDEX_INSERT_SQL, ac_index_rows)

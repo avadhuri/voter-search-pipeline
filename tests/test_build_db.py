@@ -3,7 +3,12 @@ import sqlite3
 import pytest
 
 import build_db
-from states.base import Constituency, StateConnector, VoterRecord
+from states.base import (
+    Constituency,
+    StateConnector,
+    UnparseableRollError,
+    VoterRecord,
+)
 from states.karnataka import CSV_URL_TEMPLATE, KarnatakaConnector
 
 A085_ROWS = (
@@ -465,3 +470,144 @@ def test_a_republished_patch_leaves_the_catalog_pointing_at_a_file_that_exists(
         assert patch == 2
         named = out_dir / "fakestate" / f"{ac_code}-{contract}.p{patch}.sqlite"
         assert named.exists(), f"catalog names {named.name}, which was not built"
+
+
+# --- ACs a connector declares it cannot parse -------------------------------
+#
+# Some states publish a minority of their ACs as page scans with no text
+# layer. A connector that refuses to guess is behaving correctly, and the
+# build has to treat those ACs as absent rather than as a fault. It did not:
+# one scanned Haryana AC aborted a two-state per-AC build after 44 ACs had
+# been written, discarding West Bengal (not yet started) and every catalog
+# (written last).
+
+
+class _ScannedACConnector(StateConnector):
+    """Parses F001 and refuses F002, the way haryana.py refuses a scan."""
+
+    state_id = "scanstate"
+
+    def list_constituencies(self):
+        return [
+            Constituency(ac_code="F001", ac_name="Readable", district="D1"),
+            Constituency(ac_code="F002", ac_name="Scanned", district="D1"),
+        ]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        if ac.ac_code == "F002":
+            raise UnparseableRollError(
+                f"{ac.ac_code} ({ac.ac_name}) is published as page scans with no "
+                f"usable text layer"
+            )
+        return [
+            VoterRecord(
+                state=self.state_id, district=ac.district, ac_code=ac.ac_code,
+                ac_name=ac.ac_name, part_no=1, serial_no=1, local_ref="",
+                full_name="Readable Person", full_relative_name="Readable Relative",
+                relation_code="F", age=30, gender="M", roll_year=roll_year,
+                locality="Village One",
+            ),
+        ]
+
+
+class _AllScannedConnector(_ScannedACConnector):
+    state_id = "allscanned"
+
+    def parse_raw(self, raw, ac, roll_year):
+        raise UnparseableRollError(f"{ac.ac_code} is a scan")
+
+
+def _scan_raw(tmp_path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "F001.csv").write_text("placeholder\n")
+    (raw_dir / "F002.csv").write_text("placeholder\n")
+    return raw_dir
+
+
+def test_one_unparseable_ac_does_not_take_the_rest_of_the_build_with_it(
+    tmp_path, monkeypatch
+):
+    raw_dir = _scan_raw(tmp_path)
+    _register(monkeypatch, "scanstate", _ScannedACConnector, raw_dir)
+
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["scanstate"], str(out_dir), contract="c1", patch=0)
+
+    # The readable AC is built and the scanned one simply is not there.
+    assert (out_dir / "scanstate" / "F001-c1.p0.sqlite").exists()
+    assert not (out_dir / "scanstate" / "F002-c1.p0.sqlite").exists()
+
+    cat = sqlite3.connect(out_dir / "catalog" / "scanstate.sqlite")
+    try:
+        assert [r[0] for r in cat.execute("SELECT ac_code FROM ac_index")] == ["F001"]
+        # acs_digitized counts ACs that were actually built. Counting the
+        # scanned one would publish a state that looks more complete than it
+        # is; locality_coverage "full" would be a claim about an AC with no
+        # file at all.
+        digitized, coverage = cat.execute(
+            "SELECT acs_digitized, locality_coverage FROM state_coverage"
+        ).fetchone()
+        assert digitized == 1
+        assert coverage == "full"
+    finally:
+        cat.close()
+
+
+def test_a_state_where_nothing_parses_stops_the_build(tmp_path, monkeypatch):
+    """Skipping a minority is designed behaviour; skipping all of them means
+    the connector or the raw files are broken. Publishing an empty catalog
+    there would take the state off the site while every downstream check
+    still reads green -- the same silent-success shape as the stale-data
+    incident."""
+    raw_dir = _scan_raw(tmp_path)
+    _register(monkeypatch, "allscanned", _AllScannedConnector, raw_dir)
+
+    with pytest.raises(UnparseableRollError) as exc:
+        build_db.build_per_ac(["allscanned"], str(tmp_path / "out"), contract="c1", patch=0)
+    assert "all 2 ACs" in str(exc.value)
+
+
+def test_the_combined_path_skips_them_too(tmp_path, monkeypatch):
+    """build_multi_state reads the same connectors and had the identical
+    abort, so fixing only the per-AC path would leave `make build-db`
+    holding the landmine."""
+    raw_dir = _scan_raw(tmp_path)
+    _register(monkeypatch, "scanstate", _ScannedACConnector, raw_dir)
+
+    db_path = tmp_path / "combined.sqlite"
+    build_db.build_multi_state(["scanstate"], str(db_path))
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert [r[0] for r in conn.execute(
+            "SELECT DISTINCT ac_code FROM voters")] == ["F001"]
+        assert conn.execute(
+            "SELECT acs_digitized FROM state_coverage").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+class _BrokenConnector(_ScannedACConnector):
+    """A parser bug, not a declared scan. Module-level because the per-AC
+    build runs connectors in a process pool, and a class defined inside a
+    test function cannot be pickled across to a worker."""
+
+    state_id = "brokenstate"
+
+    def parse_raw(self, raw, ac, roll_year):
+        raise ValueError("parser bug, not a scan")
+
+
+def test_an_unexpected_error_still_stops_the_build(tmp_path, monkeypatch):
+    """The skip is scoped to the one exception a connector raises to declare
+    an AC unparseable. Broadening it to bare Exception would turn every real
+    parser bug into a quietly smaller state."""
+    raw_dir = _scan_raw(tmp_path)
+    _register(monkeypatch, "brokenstate", _BrokenConnector, raw_dir)
+
+    with pytest.raises(ValueError):
+        build_db.build_per_ac(["brokenstate"], str(tmp_path / "out"), contract="c1", patch=0)
