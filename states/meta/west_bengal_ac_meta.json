@@ -7,6 +7,7 @@
   "district_id": 1,
   "ac_id": 1,
   "total_parts": 209,
+  "name_source": "ocr",
   "parts": [
    {
     "part_no": 1,
@@ -63570,6 +63571,7 @@
   "district_id": 7,
   "ac_id": 50,
   "total_parts": 186,
+  "name_source": "ocr",
   "parts": [
    {
     "part_no": 1,
@@ -293338,6 +293340,7 @@
   "district_id": 17,
   "ac_id": 232,
   "total_parts": 196,
+  "name_source": "ocr",
   "parts": [
    {
     "part_no": 1,
