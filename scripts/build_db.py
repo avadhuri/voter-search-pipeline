@@ -23,13 +23,13 @@ Usage:
         <raw_dir> (as produced by scripts/download_2002_all.py). Karnataka
         only -- kept as the original POC-regression path.
 
-    build_db.py --states karnataka,west_bengal <sqlite_db_path>
+    build_db.py --states karnataka,west_bengal <sqlite_db_path> [--roll-year YYYY]
         Build/overwrite one combined DB across every listed state, each
         read from its states/registry.py raw_dir/raw_glob. Still useful for
         local CLI/dev use (scripts/search.py, ad hoc queries) even though
         production serving has moved to --per-ac below.
 
-    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0] [--workers N]
+    build_db.py --states karnataka,west_bengal --per-ac <out_dir> [--contract c1] [--patch 0] [--workers N] [--roll-year YYYY]
         Build one <out_dir>/<state>/<ac_code>-<contract>.p<patch>.sqlite per
         AC, plus one <out_dir>/catalog/<state>.sqlite per state (a small
         state_coverage + ac_index summary, no voter rows). contract is the
@@ -43,6 +43,13 @@ Usage:
         makes an interrupted run resumable by just re-running the same
         command, and lets a bigger --workers value be applied retroactively
         without redoing already-finished ACs.
+
+        Each state is stamped with its own roll year (states/roll_years.py,
+        from states/meta/sir_source_urls/state_roll_years.json) -- the
+        "2002 rolls" are not all from 2002, and the serving app derives an
+        elector's year of birth as `roll_year - age`. --roll-year overrides
+        that for every state in the build; omit it unless you specifically
+        mean to.
 """
 import datetime
 import glob
@@ -56,6 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from states.base import Constituency
 from states.karnataka import KarnatakaConnector
 from states.registry import STATE_CONNECTORS
+from states.roll_years import resolve_roll_year, roll_year_for
 from states.source_urls import resolve_source_url
 from transliteration import backfill_latin_columns
 
@@ -93,7 +101,14 @@ CREATE TABLE state_coverage (
     acs_total INTEGER,
     acs_digitized INTEGER,
     locality_coverage TEXT,
-    built_at TEXT
+    built_at TEXT,
+    -- The electoral-roll year this state's rows carry. Denormalized out of
+    -- voters.roll_year so the serving app can render its year-of-birth
+    -- ceiling per state at form time, without opening a per-AC file (in
+    -- AC_DB_DIR mode it holds only the catalog at that point). One value per
+    -- state because a state's rolls are revised as a unit -- if that ever
+    -- stops being true, this becomes a per-AC column, not a per-state one.
+    roll_year INTEGER
 );
 """
 
@@ -105,7 +120,14 @@ CREATE TABLE state_coverage (
     acs_total INTEGER,
     acs_digitized INTEGER,
     locality_coverage TEXT,
-    built_at TEXT
+    built_at TEXT,
+    -- The electoral-roll year this state's rows carry. Denormalized out of
+    -- voters.roll_year so the serving app can render its year-of-birth
+    -- ceiling per state at form time, without opening a per-AC file (in
+    -- AC_DB_DIR mode it holds only the catalog at that point). One value per
+    -- state because a state's rolls are revised as a unit -- if that ever
+    -- stops being true, this becomes a per-AC column, not a per-state one.
+    roll_year INTEGER
 );
 
 DROP TABLE IF EXISTS ac_index;
@@ -147,8 +169,9 @@ INSERT INTO voters (
 
 STATE_COVERAGE_INSERT_SQL = """
 INSERT INTO state_coverage (
-    state_id, label, acs_total, acs_digitized, locality_coverage, built_at
-) VALUES (?,?,?,?,?,?)
+    state_id, label, acs_total, acs_digitized, locality_coverage, built_at,
+    roll_year
+) VALUES (?,?,?,?,?,?,?)
 """
 
 AC_INDEX_INSERT_SQL = """
@@ -221,8 +244,13 @@ def _finalize_voters_only(conn):
     conn.commit()
 
 
-def build_single(raw_csv_path, db_path, roll_year=2002):
-    """Build a DB from one AC's raw CSV, inferring ac_code from the filename."""
+def build_single(raw_csv_path, db_path, roll_year=None):
+    """Build a DB from one AC's raw CSV, inferring ac_code from the filename.
+
+    Karnataka-only, same as build_combined -- see its docstring for why the
+    year is resolved rather than hardcoded here.
+    """
+    roll_year = roll_year if roll_year is not None else resolve_roll_year("karnataka")
     ac_code = os.path.splitext(os.path.basename(raw_csv_path))[0]
     connector = KarnatakaConnector()
     ac = _resolve_ac(ac_code, _load_ac_lookup())
@@ -242,8 +270,14 @@ def build_single(raw_csv_path, db_path, roll_year=2002):
     conn.close()
 
 
-def build_combined(raw_dir, db_path, roll_year=2002):
-    """Build one DB from every <AC_CODE>.csv file in raw_dir."""
+def build_combined(raw_dir, db_path, roll_year=None):
+    """Build one DB from every <AC_CODE>.csv file in raw_dir.
+
+    Karnataka-only legacy path, so the roll year is Karnataka's --
+    resolved rather than written down again, so there stays exactly one
+    place in the repo that says which year that is.
+    """
+    roll_year = roll_year if roll_year is not None else resolve_roll_year("karnataka")
     connector = KarnatakaConnector()
     ac_lookup = _load_ac_lookup()
     conn = sqlite3.connect(db_path)
@@ -268,9 +302,17 @@ def build_combined(raw_dir, db_path, roll_year=2002):
     conn.close()
 
 
-def build_multi_state(state_ids, db_path, roll_year=2002):
+def build_multi_state(state_ids, db_path, roll_year=None):
     """Build one DB combining every listed state's raw files, per
     states/registry.py's connector class + raw_dir/raw_glob for each.
+
+    roll_year is resolved **per state, inside the loop** (see
+    states/roll_years.py) rather than taken as one number for the whole
+    build -- the "2002 rolls" are not all from 2002, and roll_year is not
+    decoration: the serving app derives an elector's year of birth as
+    `roll_year - age` for its required year-of-birth filter. The parameter
+    survives only as an explicit override for a caller that genuinely knows
+    better; passing it forces every state in the build to that year.
 
     Also populates state_coverage -- one row per state summarizing how much
     of it is digitized (acs_digitized/acs_total, from raw files present vs.
@@ -291,6 +333,7 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
     for state_id in state_ids:
         info = STATE_CONNECTORS[state_id]
         connector = info["connector_cls"]()
+        state_roll_year = roll_year_for(info, state_id, override=roll_year)
         ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_total = 0
@@ -300,13 +343,13 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
             ac = _resolve_ac(ac_code, ac_lookup)
             with open(path, "rb") as f:
                 raw = f.read()
-            records = connector.parse_raw(raw, ac, roll_year)
+            records = connector.parse_raw(raw, ac, state_roll_year)
             conn.executemany(INSERT_SQL, _records_to_rows(records))
             state_total += len(records)
             if any(r.locality for r in records):
                 acs_with_locality.add(ac_code)
             print(f"  [{state_id}] {ac_code}: {len(records)} records")
-        print(f"{state_id}: {state_total} records from {len(paths)} files")
+        print(f"{state_id}: {state_total} records from {len(paths)} files (roll year {state_roll_year})")
         grand_total += state_total
 
         if not paths:
@@ -319,7 +362,7 @@ def build_multi_state(state_ids, db_path, roll_year=2002):
             locality_coverage = "none"
         conn.execute(STATE_COVERAGE_INSERT_SQL, (
             state_id, info["label"], len(ac_lookup), len(paths),
-            locality_coverage, built_at,
+            locality_coverage, built_at, state_roll_year,
         ))
 
     translit_count = backfill_latin_columns(conn, state_ids=state_ids)
@@ -410,7 +453,7 @@ def _build_one_ac(task):
     }
 
 
-def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, workers=None):
+def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, workers=None):
     """Build one small <ac_code>-<contract>.p<patch>.sqlite per (state,
     ac_code), plus one small catalog.sqlite per state -- the native per-AC
     serving artifact set (no combined DB is built or needed for this path;
@@ -425,6 +468,10 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, wor
     content -- republishing an AC's data (bug fix, added locality,
     re-digitized) is a deliberate act of bumping --patch, not something
     this script infers on its own.
+
+    roll_year is resolved per state (states/roll_years.py), not taken as one
+    number for the whole build -- see build_multi_state's docstring for why
+    that matters. The parameter remains as an all-states override.
     """
     unknown = [s for s in state_ids if s not in STATE_CONNECTORS]
     if unknown:
@@ -442,6 +489,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, wor
         info = STATE_CONNECTORS[state_id]
         connector_cls = info["connector_cls"]
         connector = connector_cls()
+        state_roll_year = roll_year_for(info, state_id, override=roll_year)
         ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_dir = os.path.join(out_dir, state_id)
@@ -452,7 +500,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, wor
             ac_code = os.path.splitext(os.path.basename(path))[0]
             ac = _resolve_ac(ac_code, ac_lookup)
             ac_db_path = os.path.join(state_dir, f"{ac_code}-{contract}.p{patch}.sqlite")
-            tasks.append((state_id, connector_cls, path, ac_db_path, contract, patch, ac, roll_year))
+            tasks.append((state_id, connector_cls, path, ac_db_path, contract, patch, ac, state_roll_year))
 
         results = []
         pool_size = max(1, min(workers, len(tasks) or 1))
@@ -480,7 +528,8 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, wor
             for loc in r["localities"]
         ]
 
-        print(f"{state_id}: {state_total} records across {len(paths)} AC file(s) ({pool_size} worker(s))")
+        print(f"{state_id}: {state_total} records across {len(paths)} AC file(s) "
+              f"({pool_size} worker(s), roll year {state_roll_year})")
         grand_total += state_total
 
         if not paths:
@@ -497,7 +546,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=2002, wor
         cat_conn.executescript(CATALOG_SCHEMA)
         cat_conn.execute(STATE_COVERAGE_INSERT_SQL, (
             state_id, info["label"], len(ac_lookup), len(paths),
-            locality_coverage, built_at,
+            locality_coverage, built_at, state_roll_year,
         ))
         cat_conn.executemany(AC_INDEX_INSERT_SQL, ac_index_rows)
         cat_conn.executemany(CATALOG_LOCALITY_INSERT_SQL, locality_rows)
@@ -517,9 +566,14 @@ if __name__ == "__main__":
         contract = sys.argv[sys.argv.index("--contract") + 1] if "--contract" in sys.argv else "c1"
         patch = int(sys.argv[sys.argv.index("--patch") + 1]) if "--patch" in sys.argv else 0
         workers = int(sys.argv[sys.argv.index("--workers") + 1]) if "--workers" in sys.argv else None
-        build_per_ac(state_ids, out_dir, contract=contract, patch=patch, workers=workers)
-    elif len(sys.argv) == 4 and sys.argv[1] == "--states":
-        build_multi_state(sys.argv[2].split(","), sys.argv[3])
+        # --roll-year forces every state in this build to one year. Omit it
+        # (the normal case) and each state gets its own, per roll_years.py.
+        roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
+        build_per_ac(state_ids, out_dir, contract=contract, patch=patch,
+                     roll_year=roll_year, workers=workers)
+    elif sys.argv[1:2] == ["--states"] and len(sys.argv) in (4, 6):
+        roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
+        build_multi_state(sys.argv[2].split(","), sys.argv[3], roll_year=roll_year)
     elif len(sys.argv) == 3:
         build_single(sys.argv[1], sys.argv[2])
     else:
