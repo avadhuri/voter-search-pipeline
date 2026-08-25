@@ -133,6 +133,15 @@ PAIRS = [
     # right, so what it cost was the damage remark, not the name.
     ("85b9dfc6bbc1", "বড়ুয়া"),           # n=4     was বড়ুয়া   (223 unmapped)
     ("4682b9dfc6", "ঝড়ু"),                # n=13    was ঝড়ু     (223 unmapped)
+
+    # gid 224, read as a second space until it was checked against gid 3.
+    # Every one of these came out as two words, the conjunct dropped.
+    ("05c185e085c1af", "আব্বাস"),           # n=9   was আব বাস
+    ("3f85e085c19a", "জব্বার"),             # n=14  was জব বার
+    ("6de0853fc16dc19ac4", "ধ্বজাধারী"),   # n=3   was ধ বজাধারী
+    ("24c682a66de0853f", "কুশধ্বজ"),        # n=2   was কুশধ বজ
+    ("3fc685e085c19a", "জুব্বার"),          # n=2   was জুব বার
+    ("7cc185e085d45782c4", "পার্ব্বতী"),       # n=17  was পাব র্বতী
 ]
 
 # Page-1 headings, truncated. AC001 is SHREE550; AC022 (Kalimpong) is one of
@@ -315,3 +324,47 @@ def test_pua_base_agrees_with_the_connector():
     from states import west_bengal
 
     assert sl.PUA_BASE == west_bengal.PUA_BASE
+
+
+def test_the_joiner_is_a_hasant_and_not_a_second_space():
+    """gid 224 sat in SPACE_GIDS for as long as this module existed, which
+    split one name into two AND dropped the conjunct: আব্বাস came out
+    "আব বাস". It is not a space. Over AC001+AC003 (10 parts) gid 3 occurs
+    4,502 times and 224 only 107, never at a word boundary -- its neighbours
+    are ব_ব 100 times and ধ_ব the other 7, always between two consonants,
+    while the genuine break in those same rows is a literal ASCII space
+    sitting beside it.
+
+    It attaches to the letter already emitted rather than appending a loose
+    "্", because _cluster_start() identifies a conjunct by walking back over
+    elements ENDING in a hasant -- a bare "্" satisfies that on its own and
+    stops the walk a glyph short, seating a following repha inside the cluster
+    it rides (পাবর্্বতী for পার্ব্বতী).
+    """
+    assert 224 not in sl.SPACE_GIDS
+    assert 224 in sl.JOINER_GIDS and 224 in sl.KNOWN_GIDS
+    assert decode(_pua("05c185e085c1af"))[0] == "আব্বাস"        # was আব বাস
+    assert decode(_pua("6de0853fc16dc19ac4"))[0] == "ধ্বজাধারী"  # was ধ বজাধারী
+    # the real break in the same row is an ASCII space, and it survives
+    assert decode(_pua("3f85e085c19a") + " " + _pua("05c19bc4"))[0] == "জব্বার আলী"
+
+
+def test_a_prebase_matra_waits_for_the_joiner():
+    """A pre-base matra is released once its cluster is complete, and the
+    joiner continues that cluster. Releasing it early left the joiner with a
+    matra behind it instead of a consonant, so the hasant was dropped and the
+    repha then seated against the matra: সর্ব্বেশবর came out সবের্বশবর."""
+    assert decode(_pua("afcd85e085d4a68c9a"))[0] == "সর্ব্বেশবর"
+    assert decode(_pua("afc1c285e0859a"))[0] == "সাব্বির"        # was সাবি বর
+
+
+def test_a_repha_after_a_matra_rides_a_conjunct_behind_it():
+    """Two readings share one glyph shape. কার্তিক is ক া র্ ত ি -- the repha
+    rides the consonant ahead. সর্ব্বানন্দ is স ব্ব া র্ ন ন দ -- it rides the
+    conjunct behind, which the matra sits after. The tiebreak is whether that
+    cluster is a conjunct; reading every such repha as forward-riding gave
+    সব্বার্ননদ, and reading every one as backward-riding would break কার্তিক.
+    """
+    assert decode(_pua("af85e085c1d46f7865"))[0] == "সর্ব্বাননদ"   # backward
+    assert decode(_pua("65c685e085d49bc1"))[0] == "দুর্ব্বলা"       # backward
+    assert decode(_pua("c26f85d4c13a822482"))[0] == "নির্বাচক"      # forward

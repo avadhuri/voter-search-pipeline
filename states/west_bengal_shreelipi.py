@@ -41,10 +41,14 @@ vendor family, Modular Infotech):
      including any below-base phala, or শ + ্র + ে decodes as শে্র.
   2. A repha is drawn AFTER the glyph it clears. That glyph is the consonant
      it rides when one is directly behind it, but is the matra when the
-     cluster already carries one -- and there the repha belongs to the
-     consonant still to come.
+     cluster already carries one -- and there the repha usually belongs to the
+     consonant still to come, EXCEPT when the cluster behind the matra is
+     itself a conjunct, which the matra sits after (see the repha branch of
+     decode(): কার্তিক and সর্ব্বানন্দ are the same glyph shape either way).
   3. A consonant may be drawn as a HALF form, completed either by a bare
-     vertical stem glyph or by the next consonant in a conjunct.
+     vertical stem glyph or by the next consonant in a conjunct -- or marked
+     as one retroactively, by a joiner glyph drawn after the letter it applies
+     to (JOINER_GIDS; ব্ব is ব + joiner + ব).
   4. NEW here, and the part most likely to be mis-read as a letter: some
      glyphs are HOOKS, not characters. Glyph 220 is the stroke that turns a
      ta-conjunct into a ka-conjunct (92 alone is ত্র, 92+220 is ক্র; 89 alone
@@ -164,7 +168,7 @@ REPHA = "র" + HASANT        # র্
 # structural glyphs -- these are not letters
 # --------------------------------------------------------------------------
 
-SPACE_GIDS = {3, 224}
+SPACE_GIDS = {3}
 
 # Contributes no character: a spacing/head-stroke filler emitted after certain
 # consonants. Established empirically -- it appears between a consonant and its
@@ -197,6 +201,27 @@ HALF_GIDS = {
     163: "ল", 167: "শ", 174: "ষ", 178: "স",
 }
 STEM_GIDS = {129, 219}           # bare vertical: completes a preceding half form
+
+# The opposite of a stem: retro-halves the consonant ALREADY emitted. The font
+# draws ব্ব and ধ্ব as a full first consonant, this connector, then a subjoined
+# ব, so the hasant arrives after the letter it applies to.
+#
+# This was read as a second space (SPACE_GIDS = {3, 224}) for as long as the
+# module has existed, which split one name into two and dropped the conjunct:
+# আব্বাস came out "আব বাস", জব্বার "জব বার", পার্ব্বতী "পাব র্বতী". It is not a
+# space. Over AC001+AC003 (10 parts) gid 3 occurs 4,502 times and 224 only 107,
+# never at a word boundary -- its neighbours are ব_ব 100 times and ধ_ব the
+# other 7, i.e. always between two consonants, while the genuine word break in
+# those same rows is a literal ASCII space sitting beside it. Every one of the
+# 58 distinct runs containing it reads as a real name once it is a hasant:
+# আব্বাস, জব্বার, সর্ব্বানন্দ, সর্ব্বেশ্বর, পার্ব্বতী.
+#
+# It attaches to out[-1] rather than appending a standalone "্" because
+# _cluster_start() identifies a conjunct by walking back over elements that END
+# in a hasant. A loose "্" element satisfies that test on its own and stops the
+# walk one glyph short, which seats a following repha inside the cluster it
+# rides: পাবর্্বতী instead of পার্ব্বতী.
+JOINER_GIDS = {224}
 
 # Matras the font draws to the LEFT of the cluster they follow in Unicode.
 PREBASE_GIDS = {
@@ -351,7 +376,8 @@ GID_MAP = {
 # reported, not rendered.
 KNOWN_GIDS = (
     set(GID_MAP) | set(HALF_GIDS) | set(PREBASE_GIDS) | SPACE_GIDS
-    | IGNORE_GIDS | STEM_GIDS | REPHA_GIDS | KA_HOOK_GIDS | DHA_HOOK_GIDS
+    | IGNORE_GIDS | STEM_GIDS | JOINER_GIDS | REPHA_GIDS | KA_HOOK_GIDS
+    | DHA_HOOK_GIDS
 )
 
 _TA = "ত"
@@ -442,6 +468,11 @@ def decode(s):
             half = False
             out.append(" ")
 
+        elif gid in JOINER_GIDS:
+            if out and not _is_mark(out[-1]) and not out[-1].endswith(HASANT):
+                out[-1] += HASANT               # the letter already drawn is a half form
+                half = True
+
         elif gid in STEM_GIDS:
             if half and out and out[-1].endswith(HASANT):
                 out[-1] = out[-1][:-1]          # the half form is now whole
@@ -462,7 +493,20 @@ def decode(s):
 
         elif gid in REPHA_GIDS:
             if out and _is_mark(out[-1]):
-                held.append(REPHA)              # belongs to the consonant ahead
+                # A repha drawn after a matra rides either the consonant ahead
+                # (কার্তিক is ক া র্ ত ি) or the cluster the matra itself
+                # belongs to. The two are indistinguishable from glyph order
+                # alone, so the tiebreak is whether that cluster is a conjunct:
+                # a matra sits after the whole conjunct, so the repha clearing
+                # it lands past the matra. সর্ব্বানন্দ is স ব্ব া র্ ন ন দ, and
+                # reading that repha as riding the ন gave সব্বার্ননদ.
+                k = len(out)
+                while k > 0 and _is_mark(out[k - 1]):
+                    k -= 1                      # back over trailing matras
+                if k >= 2 and out[k - 2].endswith(HASANT):
+                    out.insert(_cluster_start(out, k - 1), REPHA)
+                else:
+                    held.append(REPHA)          # belongs to the consonant ahead
             else:
                 out.insert(_cluster_start(out, len(out) - 1), REPHA)
 
@@ -471,7 +515,7 @@ def decode(s):
 
         elif gid in CLUSTER_TAIL_GIDS:
             out.append(GID_MAP[gid])
-            if _peek(s, i) not in CLUSTER_TAIL_GIDS:
+            if _peek(s, i) not in CLUSTER_TAIL_GIDS | JOINER_GIDS:
                 out.extend(pending)
                 del pending[:]
             half = False
@@ -489,8 +533,9 @@ def decode(s):
             if held:
                 out[-1:-1] = held
                 del held[:]
-            # Hold a buffered pre-base matra back over a following phala.
-            if _peek(s, i) not in CLUSTER_TAIL_GIDS:
+            # Hold a buffered pre-base matra back over a following phala
+            # or joiner -- both continue the cluster the matra is waiting on.
+            if _peek(s, i) not in CLUSTER_TAIL_GIDS | JOINER_GIDS:
                 out.extend(pending)
                 del pending[:]
             half = False
