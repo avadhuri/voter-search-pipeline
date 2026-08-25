@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac push-ac-db-dev migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac push-ac-db-dev roll-years migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -113,6 +113,13 @@ else ifdef STATES
 else
 	$(PY) -m build_db --states karnataka,west_bengal,haryana $(MULTI_DB)
 endif
+
+# The roll-year mapping is derived from the workbook it shipped with, not
+# hand-maintained -- `--check` in the test suite fails if the committed JSON
+# has drifted from it. See scripts/build_roll_years.py's docstring for why a
+# received .xlsx is the source of truth and the .json is what stays committed.
+roll-years: ## Regenerate states/meta/sir_source_urls/state_roll_years.json from its workbook
+	$(PY) -m build_roll_years
 
 # One-time backfill of full_name_latin/full_relative_name_latin on an
 # already-built DB (new build-db runs do this automatically). Safe to
