@@ -11,9 +11,9 @@ Column variations handled:
   - part_no / part_number → part_no
   - serial_no / serial_number → serial_no
   - relation / relation_type → relation_code (mapped to F/H/M/O)
-  - elector_name_en preferred over elector_name for full_name
-    (pre-transliterated; for English states they're the same)
-  - relation_name_en preferred over relation_name
+  - elector_name → full_name (native script)
+  - elector_name_en → full_name_latin (connector-supplied romanization)
+  - relation_name_en → full_relative_name_latin
   - relation_type_en preferred for relation_code mapping
 
 States missing columns (e.g. Tripura has no state/district/ac_name/house_no)
@@ -110,20 +110,22 @@ class CsvConnector(StateConnector):
         serial_col = "serial_number" if "serial_number" in fields else "serial_no"
         rel_col = "relation_type" if "relation_type" in fields else "relation"
 
+        en_fallback_count = 0
         records = []
         for row in reader:
-            # --- Name: prefer _en (pre-transliterated) ---
-            if has_en:
-                name = (row.get("elector_name_en") or "").strip()
-                rel_name = (row.get("relation_name_en") or "").strip()
-                # Fall back to native if _en is empty
-                if not name:
-                    name = (row.get("elector_name") or "").strip()
-                if not rel_name:
-                    rel_name = (row.get("relation_name") or "").strip()
-            else:
-                name = (row.get("elector_name") or "").strip()
-                rel_name = (row.get("relation_name") or "").strip()
+            # --- Name: native in full_name, CSV's own romanization in *_latin ---
+            name = (row.get("elector_name") or "").strip()
+            name_latin = (row.get("elector_name_en") or "").strip()
+            if not name:
+                name = name_latin  # no native value → romanization is all we have
+
+            rel_name = (row.get("relation_name") or "").strip()
+            rel_name_latin = (row.get("relation_name_en") or "").strip()
+            if not rel_name:
+                rel_name = rel_name_latin
+
+            if name and not name_latin:
+                en_fallback_count += 1
 
             # --- Relation code: prefer _en, map to F/H/M/O ---
             if has_rel_en:
@@ -144,10 +146,11 @@ class CsvConnector(StateConnector):
             if gender not in ("M", "F"):
                 gender = ""
 
-            # --- Fields that may be missing (Tripura) ---
-            state = (row.get("state") or self.state_id).strip()
-            district = (row.get("district") or ac.district).strip()
-            ac_name = (row.get("ac_name") or ac.ac_name).strip()
+            # --- Fields: registry state_id is authoritative, meta is
+            #     authoritative for district/ac_name, CSV row is fallback ---
+            state = self.state_id
+            district = (ac.district or (row.get("district") or "")).strip()
+            ac_name = (ac.ac_name or (row.get("ac_name") or "")).strip()
             house_no = (row.get("house_no") or "").strip()
             locality = (row.get("locality") or "").strip()
 
@@ -170,12 +173,18 @@ class CsvConnector(StateConnector):
                 serial_no=serial_no,
                 local_ref=house_no,
                 full_name=name,
+                full_name_latin=name_latin,
                 full_relative_name=rel_name,
+                full_relative_name_latin=rel_name_latin,
                 relation_code=relation_code,
                 age=age,
                 gender=gender,
                 roll_year=roll_year,
                 locality=locality,
             ))
+
+        if en_fallback_count:
+            print(f"    [{self.state_id}] {ac.ac_code}: {en_fallback_count:,} rows "
+                  f"missing elector_name_en (will use rule-based backfill)")
 
         return records

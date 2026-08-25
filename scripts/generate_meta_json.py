@@ -18,6 +18,17 @@ import os
 import sys
 import time
 import urllib.request
+from collections import Counter
+
+
+def _assert_no_duplicate_acs(meta, state_slug):
+    """Fail fast if any ac_no appears more than once in the generated meta."""
+    dupes = {k: v for k, v in Counter(a["ac_no"] for a in meta).items() if v > 1}
+    if dupes:
+        raise ValueError(
+            f"{state_slug}: duplicate ac_no values in generated meta: {dupes}. "
+            f"Total entries {len(meta)}, unique ACs {len(set(a['ac_no'] for a in meta))}."
+        )
 from base64 import b64encode
 
 API_BASE = "https://gateway-voters.eci.gov.in/api/v1/citizen/sir"
@@ -158,6 +169,7 @@ def build_eci_meta(state_cd):
             print(f"    ACs: {i+1}/{len(assemblies)}")
         time.sleep(0.25)
 
+    _assert_no_duplicate_acs(meta, slug)
     filepath = os.path.join(META_DIR, f"{slug}_ac_meta.json")
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1, ensure_ascii=False)
@@ -207,6 +219,7 @@ def build_bihar_meta():
             print(f"    ACs: {i+1}/{len(assemblies)}")
         time.sleep(0.25)
 
+    _assert_no_duplicate_acs(meta, "bihar")
     filepath = os.path.join(META_DIR, "bihar_ac_meta.json")
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1, ensure_ascii=False)
@@ -241,6 +254,7 @@ def build_gujarat_meta():
             "zip_url": ZIP_PATTERN.format(ac_no=ac_no),
         })
 
+    _assert_no_duplicate_acs(meta, "gujarat")
     filepath = os.path.join(META_DIR, "gujarat_ac_meta.json")
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1, ensure_ascii=False)
@@ -277,6 +291,7 @@ def build_chandigarh_meta():
         "parts": part_list,
     }]
 
+    _assert_no_duplicate_acs(meta, "chandigarh")
     filepath = os.path.join(META_DIR, "chandigarh_ac_meta.json")
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1, ensure_ascii=False)
@@ -327,6 +342,7 @@ def build_dnh_meta():
             "parts": part_list,
         })
 
+    _assert_no_duplicate_acs(meta, "dadra_nagar_haveli_daman_diu")
     filepath = os.path.join(META_DIR, "dadra_nagar_haveli_daman_diu_ac_meta.json")
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=1, ensure_ascii=False)

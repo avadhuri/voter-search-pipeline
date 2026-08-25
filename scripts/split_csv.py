@@ -14,11 +14,14 @@ Usage:
 """
 import argparse
 import csv
+import json
 import os
 import sys
 
 CSV_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "csv_output")
+META_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "states", "meta")
 
 # Column name used for AC number varies by state
 AC_COLUMNS = ["ac_no", "ac_number"]
@@ -41,10 +44,23 @@ def split_state(state_id):
 
     out_dir = os.path.join(CSV_BASE, state_id, "per_ac")
 
-    # Skip if already split (per_ac/ exists and has CSV files)
-    if os.path.isdir(out_dir) and any(f.endswith(".csv") for f in os.listdir(out_dir)):
-        print(f"  SKIP {state_id}: already split ({out_dir})")
-        return
+    # Load meta to know expected AC count
+    meta_file = os.path.join(META_DIR, f"{state_id}_ac_meta.json")
+    expected_acs = 0
+    if os.path.exists(meta_file):
+        with open(meta_file, encoding="utf-8") as f:
+            expected_acs = len(json.load(f))
+
+    # Skip only if per_ac/ has the right number of CSV files (not a partial split)
+    if os.path.isdir(out_dir):
+        existing = [f for f in os.listdir(out_dir) if f.endswith(".csv")]
+        if expected_acs and len(existing) >= expected_acs:
+            print(f"  SKIP {state_id}: already split ({len(existing)} ACs in {out_dir})")
+            return
+        elif existing:
+            print(f"  {state_id}: partial split ({len(existing)}/{expected_acs} ACs), re-splitting...")
+            for f in existing:
+                os.remove(os.path.join(out_dir, f))
 
     os.makedirs(out_dir, exist_ok=True)
 

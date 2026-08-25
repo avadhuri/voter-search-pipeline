@@ -55,9 +55,10 @@ STATE_CONNECTORS = {
     # csv_output/<state>/per_ac/ (produced by scripts/split_csv.py from
     # the combined CSVs that scripts/extractors/extract_*.py output).
     #
-    # script is "latin" for all: non-Latin states' CSVs have _en columns
-    # (pre-transliterated), and CsvConnector uses elector_name_en as
-    # full_name, so the DB always stores Latin-script searchable names.
+    # CsvConnector stores native script in full_name and the CSV's own
+    # romanization (_en columns) in full_name_latin.  script must match
+    # the actual script so backfill_latin_columns() fills any rows where
+    # _en was empty.
 
     # Hindi (Devanagari) states
     "madhya_pradesh": {
@@ -65,42 +66,42 @@ STATE_CONNECTORS = {
         "label": "Madhya Pradesh",
         "raw_dir": "csv_output/madhya_pradesh/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "devanagari",
     },
     "rajasthan": {
         "connector_cls": _make_csv_connector_cls("rajasthan"),
         "label": "Rajasthan",
         "raw_dir": "csv_output/rajasthan/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "devanagari",
     },
     "chhattisgarh": {
         "connector_cls": _make_csv_connector_cls("chhattisgarh"),
         "label": "Chhattisgarh",
         "raw_dir": "csv_output/chhattisgarh/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "devanagari",
     },
     "uttarakhand": {
         "connector_cls": _make_csv_connector_cls("uttarakhand"),
         "label": "Uttarakhand",
         "raw_dir": "csv_output/uttarakhand/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "devanagari",
     },
     "himachal_pradesh": {
         "connector_cls": _make_csv_connector_cls("himachal_pradesh"),
         "label": "Himachal Pradesh",
         "raw_dir": "csv_output/himachal_pradesh/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "devanagari",
     },
     "chandigarh": {
         "connector_cls": _make_csv_connector_cls("chandigarh"),
         "label": "Chandigarh",
         "raw_dir": "csv_output/chandigarh/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "devanagari",
     },
 
     # Telugu
@@ -109,7 +110,7 @@ STATE_CONNECTORS = {
         "label": "Telangana",
         "raw_dir": "csv_output/telangana/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "telugu",
     },
 
     # Bengali
@@ -118,14 +119,14 @@ STATE_CONNECTORS = {
         "label": "Assam",
         "raw_dir": "csv_output/assam/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "bengali",
     },
     "tripura": {
         "connector_cls": _make_csv_connector_cls("tripura"),
         "label": "Tripura",
         "raw_dir": "csv_output/tripura/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "bengali",
     },
 
     # Gurmukhi
@@ -134,7 +135,7 @@ STATE_CONNECTORS = {
         "label": "Punjab",
         "raw_dir": "csv_output/punjab/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "gurmukhi",
     },
 
     # Malayalam
@@ -143,16 +144,16 @@ STATE_CONNECTORS = {
         "label": "Lakshadweep",
         "raw_dir": "csv_output/lakshadweep/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "malayalam",
     },
 
-    # Multi-script (Tamil/Telugu/Malayalam)
+    # Multi-script (Tamil/Telugu/Malayalam — dominant is Tamil)
     "puducherry": {
         "connector_cls": _make_csv_connector_cls("puducherry"),
         "label": "Puducherry",
         "raw_dir": "csv_output/puducherry/per_ac",
         "raw_glob": "*.csv",
-        "script": "latin",
+        "script": "tamil",
     },
 
     # English states (no transliteration needed)
