@@ -48,7 +48,11 @@ up-to-date source of truth for what's runnable, more so than this file.
   downloaded yet.
 - `scripts/build_db.py` — parses raw files via the registry into one
   SQLite DB (`voters` table + FTS5 index). Single-AC, single-state
-  (`--combine`, legacy Karnataka-only), or multi-state (`--states a,b,c`).
+  (`--combine`), or multi-state (`--states a,b,c`). The first two predate
+  the registry and take a raw path rather than a state, so `--state`
+  (`STATE=` in the Makefile) says which one — defaulting to Karnataka
+  because that is the state they always meant, not because they do anything
+  Karnataka-specific.
 - `scripts/matching.py` — the fuzzy-matching algorithm registry
   (rapidfuzz WRatio, Jaro-Winkler) plus vectorized batch scoring
   (`score_fields_batch`) — shared by `search.py` and the closed app so
@@ -96,7 +100,8 @@ fetches just that one.
 `make build-db` (no args) builds the combined 3-state demo DB at
 `data/db/multi_state_2002.sqlite`. `make build-db STATES=karnataka` (or
 any other state or comma-list) builds just those states; `make build-db
-AC=A085` builds a single-AC DB. See `scripts/build_db.py`'s module
+AC=A085` builds a single-AC DB (add `STATE=haryana` to build one AC of a
+state other than Karnataka — `make build-db AC=HR02 STATE=haryana`). See `scripts/build_db.py`'s module
 docstring for the exact CLI shapes if you need something the Makefile
 doesn't wrap.
 
@@ -151,7 +156,12 @@ downstream can catch it — the rows parse, score and rank exactly as they
 should. `states/roll_years.py` resolves it per state (registry entry's own
 `roll_year`, else `states/meta/sir_source_urls/state_roll_years.json` by
 ECI state code, else 2002); a new state declares its ECI code in that
-module's `STATE_CODES` and needs nothing else. `--roll-year YYYY` forces
+module's `STATE_CODES` and needs nothing else. That JSON is **derived, not
+hand-maintained** — `make roll-years` regenerates it from the
+`state_roll_years.xlsx` it shipped beside (a received artifact, see that
+directory's README), and `tests/test_roll_years.py` fails if the committed
+JSON has drifted from the workbook. A wrong year gets fixed in the workbook
+and regenerated; editing the JSON alone won't survive the next run. `--roll-year YYYY` forces
 one year across the whole build and exists only as an escape hatch — omit
 it unless you specifically mean to.
 

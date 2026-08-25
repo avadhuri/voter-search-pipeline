@@ -327,3 +327,102 @@ def test_the_same_two_guards_apply_on_the_per_ac_path(tmp_path, monkeypatch):
     _register(monkeypatch, "dupestate", _DupeMetaConnector, dupe_raw)
     with pytest.raises(build_db.DuplicateConstituencyError):
         build_db.build_per_ac(["dupestate"], str(tmp_path / "per_ac2"), workers=1)
+
+
+# --- the legacy single-state paths take a state, not a hardcoded one -------
+
+def test_build_single_and_combined_default_to_karnataka():
+    """The default is the whole reason these two functions could go a decade
+    without naming a state: it's the state they always meant. Assert it is
+    what the constant says, so changing the constant is a deliberate act
+    rather than something the tests above would silently absorb."""
+    assert build_db.DEFAULT_STATE_ID == "karnataka"
+
+
+def test_build_single_builds_a_non_default_state(tmp_path, monkeypatch):
+    """Neither legacy path does anything Karnataka-specific -- parse_raw()
+    takes bytes and the connector decides what they are -- so passing a
+    state_id must actually reach that state's connector, meta and roll year.
+    Stubbed rather than driven off a real Haryana ZIP: what's under test is
+    the dispatch, and the connector tests already cover real parsing."""
+    seen = {}
+
+    class StubConnector(StateConnector):
+        def list_constituencies(self):
+            return [Constituency(ac_code="XX01", ac_name="Stubbed", district="Nowhere")]
+
+        def fetch_raw(self, ac, out_dir):  # pragma: no cover - unused here
+            raise NotImplementedError
+
+        def parse_raw(self, raw, ac, roll_year):
+            seen["ac"] = ac
+            seen["roll_year"] = roll_year
+            return [
+                VoterRecord(
+                    state="stubland", district=ac.district, ac_code=ac.ac_code,
+                    ac_name=ac.ac_name, part_no=1, serial_no=1, local_ref="1",
+                    full_name="Stub Voter", full_relative_name="Stub Relative",
+                    relation_code="F", age=40, gender="M", roll_year=roll_year,
+                )
+            ]
+
+    monkeypatch.setitem(
+        build_db.STATE_CONNECTORS, "stubland",
+        {"connector_cls": StubConnector, "label": "Stubland",
+         "raw_dir": str(tmp_path), "raw_glob": "*.zip", "script": "latin"},
+    )
+    raw = tmp_path / "XX01.zip"
+    raw.write_bytes(b"stub-bytes")
+    db_path = tmp_path / "XX01.sqlite"
+
+    build_db.build_single(str(raw), str(db_path), state_id="stubland")
+
+    assert seen["ac"].ac_code == "XX01"
+    assert seen["ac"].district == "Nowhere"  # resolved via that state's meta
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0] == 1
+    assert conn.execute("SELECT state FROM voters").fetchone()[0] == "stubland"
+    conn.close()
+
+
+def test_build_combined_globs_by_the_states_own_raw_glob(tmp_path, monkeypatch):
+    """The old literal `*.csv` would have matched nothing for a ZIP state and
+    reported "0 ACs" rather than saying the glob was wrong for it."""
+    class StubConnector(StateConnector):
+        def list_constituencies(self):
+            return [Constituency(ac_code="XX01", ac_name="Stubbed", district="Nowhere")]
+
+        def fetch_raw(self, ac, out_dir):  # pragma: no cover - unused here
+            raise NotImplementedError
+
+        def parse_raw(self, raw, ac, roll_year):
+            return [
+                VoterRecord(
+                    state="stubland", district=ac.district, ac_code=ac.ac_code,
+                    ac_name=ac.ac_name, part_no=1, serial_no=1, local_ref="1",
+                    full_name="Stub Voter", full_relative_name="Stub Relative",
+                    relation_code="F", age=40, gender="M", roll_year=roll_year,
+                )
+            ]
+
+    monkeypatch.setitem(
+        build_db.STATE_CONNECTORS, "stubland",
+        {"connector_cls": StubConnector, "label": "Stubland",
+         "raw_dir": str(tmp_path), "raw_glob": "*.zip", "script": "latin"},
+    )
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "XX01.zip").write_bytes(b"stub-bytes")
+    (raw_dir / "notes.csv").write_text("ignored\n")  # the old glob's only match
+    db_path = tmp_path / "combined.sqlite"
+
+    build_db.build_combined(str(raw_dir), str(db_path), state_id="stubland")
+
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0] == 1
+    conn.close()
+
+
+def test_an_unknown_state_is_named_rather_than_crashing_on_a_key_error():
+    with pytest.raises(SystemExit, match="Unknown state: atlantis"):
+        build_db._state_connector("atlantis")
