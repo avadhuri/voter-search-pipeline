@@ -228,6 +228,11 @@ A new state is done when all of the following hold:
 8. `python -m build_db --states <newstate> <out>.sqlite` succeeds end-to-end
    against a real downloaded batch and produces a sane row count (spot-check
    against the portal's own AC/elector counts if available).
+8a. `make check-servable STATE=<newstate>` reports no BLOCKERs against that
+   build. A row count only says the build finished; this says the state can
+   actually be served — roll year, district/AC name, `source_url`, and the
+   `*_latin` columns a Latin-script query needs. Read the WARNINGs too and
+   say in the PR which ones you're knowingly shipping.
 9. `README.md`'s state list (if it names specific states — check current
    content) or an equivalent note reflects the new state's real coverage
    (full state vs. a subset, and why, same honesty as the WB/Haryana

@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac push-ac-db-dev migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac check-servable push-ac-db-dev migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -127,6 +127,30 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (STATES=a,b,c, default karnataka,west_bengal,haryana; WORKERS=n)
 	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(AC_DB_LOCAL_DIR) $(if $(WORKERS),--workers $(WORKERS),)
 
+# The gate between "it built" and "it can be served". Every check it runs is
+# for something that produces a completely normal-looking build -- right row
+# counts, names that parse, searches that score -- while being wrong or
+# unreachable in the serving app: a mis-stamped roll year, a blank district
+# (the picker's primary tier), a missing source_url, or empty *_latin columns
+# on a non-Latin state, whose rows then match nothing anybody can type. None
+# of that needs the closed app to detect, which is why it lives here: a
+# contributor adding a state can answer "is this servable?" themselves.
+# `make check-servable PATH_=data/db/multi_state_2002.sqlite` checks a
+# combined DB instead; STATE= narrows to one state. Non-zero exit means a
+# blocker.
+check-servable: ## Check built data is actually servable (PATH_= to override, STATE=a,b)
+	@test "$(CHECK)" != "0" || { echo "check-servable skipped (CHECK=0)"; exit 0; }; \
+	$(PY) -m check_servable $(if $(PATH_),$(PATH_),$(AC_DB_LOCAL_DIR)) $(if $(STATE),--state $(STATE),)
+
+# Gated on check-servable, deliberately: the failure this prevents is a push
+# of data that builds and searches perfectly while being wrong or unreachable
+# in the app, which has happened -- production once ran a whole state's worth
+# of per-AC files that predated the source_url column, with the live
+# self-check reporting 150/150. That's a push-time condition, not a code one,
+# which is why it's here rather than in pytest. Override with
+# `make push-ac-db-dev CHECK=0` only when you know what the blocker is and
+# mean to ship past it.
+#
 # Pushes newly-built per-AC data to the dev bucket only -- see
 # GCS_AC_BUCKET_DEV's comment above for why there's no prod equivalent
 # here. Requires gcloud auth'd as an account with roles/storage.objectAdmin
@@ -136,7 +160,7 @@ build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (S
 # buckets; a collaborator hitting the describe check below should ask for
 # access rather than being handed bucket-creation rights just to unblock
 # this.
-push-ac-db-dev: ## Copy locally-built per-AC files (make build-db-ac) up to the dev GCS bucket
+push-ac-db-dev: check-servable ## Copy locally-built per-AC files (make build-db-ac) up to the dev GCS bucket
 	@gcloud storage buckets describe "gs://$(GCS_AC_BUCKET_DEV)" --project=$(GCP_PROJECT) >/dev/null 2>&1 || \
 		{ echo "gs://$(GCS_AC_BUCKET_DEV) not reachable -- check 'gcloud auth login'/'gcloud config set project $(GCP_PROJECT)', or ask the maintainer for bucket access"; exit 1; }
 	gcloud storage rsync -r $(AC_DB_LOCAL_DIR) gs://$(GCS_AC_BUCKET_DEV) --project=$(GCP_PROJECT)

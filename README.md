@@ -74,6 +74,29 @@ any AC you haven't fetched yet.
 Contributions welcome via normal PRs — this repo has no separate staging
 step.
 
+## Is it servable?
+
+```
+make check-servable          # against data/db/ac/ (make build-db-ac)
+make check-servable PATH_=data/db/multi_state_2002.sqlite STATE=karnataka
+```
+
+A build finishing tells you almost nothing about whether the data is
+*servable*. A state can have the right row count, names that parse and
+searches that score perfectly while being wrong or unreachable in the app:
+a roll year off by three (the site derives year of birth as `roll_year -
+age`, and that field is required, so every elector is told they were never
+on the roll), a blank district (the picker's primary tier), a missing
+`source_url` (a result nobody can check against the original page), or
+empty `*_latin` columns on a non-Latin-script state, whose rows then match
+nothing anybody can type.
+
+`check-servable` looks for exactly those, per state, against either a
+per-AC directory or a combined DB. Non-zero exit means a blocker, and
+`make push-ac-db-dev` won't push over one. Run it before you open a PR
+adding a state — it's the fastest way to find out that something needs
+declaring in `states/eci_codes.py` or the registry.
+
 ## Tests
 
 ```
