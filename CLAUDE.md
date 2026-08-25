@@ -63,6 +63,9 @@ up-to-date source of truth for what's runnable, more so than this file.
   (`ai4bharat-transliteration` depends on `fairseq`, whose PyPI sdist is
   broken), and for the measured per-script quality, which is the reason a
   connector's own romanization outranks it.
+- `scripts/check_servable.py` — the gate between "it built" and "it can be
+  served" (`make check-servable`). Everything it looks for produces a
+  completely normal-looking build; see "Is it servable?" below.
 - `scripts/search.py` — the query CLI (see "Querying a DB" below).
 - `scripts/download_<state>.py` — one downloader per state with a fetch
   script, each resumable (skips files that already exist).
@@ -170,6 +173,43 @@ multi-state build has zero recoverable progress if killed partway. Build
 and test a new/changed state standalone first (`make build-db
 STATES=<state>`) before folding it into a bigger combined build.
 
+## Is it servable?
+
+```
+make build-db-ac STATES=<state>
+make check-servable                 # or PATH_=<a built .sqlite>, STATE=a,b
+```
+
+**"It built" and "it can be served" are different questions, and only the
+first one is easy.** Every check `check_servable.py` runs is for something
+that produces a build with the right row count, names that parse, searches
+that score and every search-quality assertion green — while the state is
+wrong or unreachable in the serving app in a way a user reads as an answer
+rather than as a bug. A mis-stamped `roll_year` (the app derives year of
+birth as `roll_year - age`, and that field is required, so a state three
+years off tells every elector they were never on the roll); a blank
+`district` (the picker's primary tier — an AC nobody can navigate to); a
+missing `source_url` (a result nobody can check against the original page,
+in a tool built for exactly that); empty `*_latin` columns on a non-Latin
+state (rows that match nothing anybody can type). None of it is visible
+from a row count or a spot-check of names.
+
+It runs against a per-AC directory — the layout the app actually fetches —
+or a combined `.sqlite`, and reports per state rather than per file. It
+exits non-zero on a BLOCKER, which is why `make push-ac-db-dev` depends on
+it: the failure being prevented is a *push*, and it has happened —
+production once served a whole state's worth of per-AC files that predated
+the `source_url` column, with the live self-check reporting 150/150.
+`CHECK=0` overrides, for when you know what the blocker is and mean to ship
+past it. WARNINGs never block; they're degradations a maintainer may
+knowingly ship.
+
+This lives here, not in the closed app, so a contributor adding a state can
+answer "is this servable?" without it. `tests/test_check_servable.py` drives
+each tripwire by producing the exact breakage it exists for — a test that
+only asserted "clean data passes" would have passed against every gap this
+check was written for.
+
 ## Querying a DB
 
 `make search NAME="Ramesh Kumar"` queries the default multi-state DB.
@@ -188,7 +228,7 @@ make test
 ```
 
 On a fresh clone, `make test` reports (confirmed by actually running it,
-not assumed): **1 failed, 90 passed, 5 skipped**. Both the failure and the
+not assumed): **1 failed, 104 passed, 5 skipped**. Both the failure and the
 skips are expected, not a broken setup:
 
 - **5 skips** — `test_haryana_connector.py` and `test_west_bengal_connector.py`
