@@ -132,12 +132,17 @@ def test_a_missing_serial_does_not_eat_the_first_word_of_the_name():
     row = parse_row(["পরেশ", "কিসকু", "পিতা", "কেশর", "কিসকু", "৪৬"])
     assert row["serial_no"] is None
     assert row["full_name"] == "পরেশ কিসকু"
+    assert "serial no not read" in row["remark"]
 
 
 def test_a_missing_epic_leaves_the_row_searchable():
     row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫"])
     assert row["local_ref"] == ""
     assert row["full_name"] == "রমেশ মণ্ডল"
+    # Stated without a cause on purpose: a quarter of this roll's electors
+    # genuinely have no EPIC, and a Vision response cannot tell an empty
+    # cell from one it failed to read.
+    assert "EPIC no not read" in row["remark"]
 
 
 def test_a_split_epic_is_rejoined():
@@ -155,6 +160,7 @@ def test_a_missing_gender_is_left_empty_not_inferred_from_the_relation():
     row = parse_row(["১", "সীতা", "মণ্ডল", "স্বামী", "রমেশ", "মণ্ডল", "৩০"])
     assert row["gender"] == ""
     assert row["age"] == 30
+    assert "sex not read" in row["remark"]
 
 
 def test_group_rows_keeps_words_left_to_right_within_a_row():
@@ -168,3 +174,20 @@ def test_group_rows_keeps_words_left_to_right_within_a_row():
 def test_an_empty_or_textless_response_yields_no_rows():
     assert parse_page({}) == []
     assert parse_page({"fullTextAnnotation": {"pages": []}}) == []
+
+
+def test_every_unread_cell_names_itself_in_the_remark():
+    # One row missing all four, so the remark has to carry four separate
+    # causes rather than a single "row was damaged".
+    row = parse_row(["রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল"])
+    for cause in ("serial no not read", "sex not read",
+                  "age not read", "EPIC no not read"):
+        assert cause in row["remark"], cause
+
+
+def test_a_row_that_read_cleanly_carries_no_remark():
+    row = parse_row(
+        ["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫",
+         "WBA1234567"]
+    )
+    assert row["remark"] == ""

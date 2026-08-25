@@ -158,8 +158,10 @@ def parse_row(tokens: list[str]) -> dict | None:
             serial = bengali_int(tokens[name_from])
             if serial is None:
                 serial = int(tokens[name_from])
-                remarks.append("serial number read in Latin digits, value not certain")
+                remarks.append(f"serial no read as Latin digits {tokens[name_from]!r}")
         name_from += 1
+    if serial is None:
+        remarks.append("serial no not read")
 
     epic, epic_at = _epic(tokens)
     tail = tokens[r + 1:epic_at]
@@ -170,6 +172,10 @@ def parse_row(tokens: list[str]) -> dict | None:
             gender = GENDER_WORDS[t]
             tail = tail[:i] + tail[i + 1:]
             break
+    else:
+        # Printed on every row of this roll, so an absent one is a read
+        # failure, not a blank cell -- unlike the EPIC below.
+        remarks.append("sex not read")
 
     # The age is the rightmost number in the tail, not necessarily its last
     # token: a scan often picks up a fragment of the next column past it
@@ -191,10 +197,20 @@ def parse_row(tokens: list[str]) -> dict | None:
             # correctly-shaped 6/9/0 or a ৪ misread as 8, and nothing in the
             # response distinguishes them. Dropped rather than guessed.
             remarks.append(
-                f"age came back in Latin digits ({tail[at]!r}); dropped as "
-                "unreliable rather than risk a wrong year of birth"
+                f"age read as Latin digits {tail[at]!r}, not stored -- "
+                "\u09e9/\u09ea transcribe as 6/8, so the value may be wrong "
+                "by decades"
             )
         tail = tail[:at]
+    else:
+        remarks.append("age not read")
+
+    if not epic:
+        # Left deliberately without a cause: column 8 is genuinely blank for
+        # a quarter of the electors in this roll (measured against the
+        # digitally-typeset ACs), and nothing in a Vision response
+        # distinguishes an empty cell from one it failed to read.
+        remarks.append("EPIC no not read")
 
     return {
         "serial_no": serial,
