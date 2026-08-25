@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 import build_db
 from states.base import Constituency, StateConnector, VoterRecord
 from states.karnataka import CSV_URL_TEMPLATE, KarnatakaConnector
@@ -237,3 +239,190 @@ def test_build_per_ac_populates_catalog_locality(tmp_path, monkeypatch):
     }
     assert localities == {"Fake Village"}
     cat_conn.close()
+
+
+# --- meta/raw-file disagreements stop the build instead of degrading ------
+
+class _DupeMetaConnector(StateConnector):
+    """Mimics a generated meta file that lists the same AC more than once --
+    the real instance had 44 entries for 32 distinct ac_no values."""
+
+    def list_constituencies(self):
+        return [
+            Constituency(ac_code="1", ac_name="First", district="D1"),
+            Constituency(ac_code="2", ac_name="Second", district="D2"),
+            Constituency(ac_code="1", ac_name="First Again", district="D9"),
+        ]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        return []
+
+
+class _TwoACConnector(StateConnector):
+    def list_constituencies(self):
+        return [Constituency(ac_code="F001", ac_name="First", district="D1")]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        return []
+
+
+def _register(monkeypatch, state_id, cls, raw_dir):
+    monkeypatch.setitem(build_db.STATE_CONNECTORS, state_id, {
+        "connector_cls": cls,
+        "label": state_id.title(),
+        "raw_dir": str(raw_dir),
+        "raw_glob": "*.csv",
+        "script": "latin",
+    })
+
+
+def test_a_meta_declaring_one_ac_twice_stops_the_build(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "1.csv").write_text("placeholder\n")
+    _register(monkeypatch, "dupestate", _DupeMetaConnector, raw_dir)
+
+    with pytest.raises(build_db.DuplicateConstituencyError) as exc:
+        build_db.build_multi_state(["dupestate"], str(tmp_path / "out.sqlite"))
+    # Names the offending code and how many times, so the fix doesn't need
+    # a diff of the meta file to locate.
+    assert "1 x2" in str(exc.value)
+
+
+def test_a_raw_file_for_an_undeclared_ac_stops_the_build(tmp_path, monkeypatch):
+    """Used to silently produce an AC with blank district and ac_name --
+    unreachable in the picker (district is its primary tier) and
+    unrecognizable once reached, with every search-quality check green."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "F001.csv").write_text("placeholder\n")
+    (raw_dir / "F999.csv").write_text("placeholder\n")
+    _register(monkeypatch, "strayfile", _TwoACConnector, raw_dir)
+
+    with pytest.raises(build_db.UnknownConstituencyError) as exc:
+        build_db.build_multi_state(["strayfile"], str(tmp_path / "out.sqlite"))
+    assert "F999" in str(exc.value)
+    assert "strayfile" in str(exc.value)
+
+
+def test_the_same_two_guards_apply_on_the_per_ac_path(tmp_path, monkeypatch):
+    """--per-ac is the production build path; the guards are worth nothing
+    if they only cover the combined one."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "F999.csv").write_text("placeholder\n")
+    _register(monkeypatch, "strayfile", _TwoACConnector, raw_dir)
+    with pytest.raises(build_db.UnknownConstituencyError):
+        build_db.build_per_ac(["strayfile"], str(tmp_path / "per_ac"), workers=1)
+
+    dupe_raw = tmp_path / "raw2"
+    dupe_raw.mkdir()
+    (dupe_raw / "1.csv").write_text("placeholder\n")
+    _register(monkeypatch, "dupestate", _DupeMetaConnector, dupe_raw)
+    with pytest.raises(build_db.DuplicateConstituencyError):
+        build_db.build_per_ac(["dupestate"], str(tmp_path / "per_ac2"), workers=1)
+
+
+# --- the legacy single-state paths take a state, not a hardcoded one -------
+
+def test_build_single_and_combined_default_to_karnataka():
+    """The default is the whole reason these two functions could go a decade
+    without naming a state: it's the state they always meant. Assert it is
+    what the constant says, so changing the constant is a deliberate act
+    rather than something the tests above would silently absorb."""
+    assert build_db.DEFAULT_STATE_ID == "karnataka"
+
+
+def test_build_single_builds_a_non_default_state(tmp_path, monkeypatch):
+    """Neither legacy path does anything Karnataka-specific -- parse_raw()
+    takes bytes and the connector decides what they are -- so passing a
+    state_id must actually reach that state's connector, meta and roll year.
+    Stubbed rather than driven off a real Haryana ZIP: what's under test is
+    the dispatch, and the connector tests already cover real parsing."""
+    seen = {}
+
+    class StubConnector(StateConnector):
+        def list_constituencies(self):
+            return [Constituency(ac_code="XX01", ac_name="Stubbed", district="Nowhere")]
+
+        def fetch_raw(self, ac, out_dir):  # pragma: no cover - unused here
+            raise NotImplementedError
+
+        def parse_raw(self, raw, ac, roll_year):
+            seen["ac"] = ac
+            seen["roll_year"] = roll_year
+            return [
+                VoterRecord(
+                    state="stubland", district=ac.district, ac_code=ac.ac_code,
+                    ac_name=ac.ac_name, part_no=1, serial_no=1, local_ref="1",
+                    full_name="Stub Voter", full_relative_name="Stub Relative",
+                    relation_code="F", age=40, gender="M", roll_year=roll_year,
+                )
+            ]
+
+    monkeypatch.setitem(
+        build_db.STATE_CONNECTORS, "stubland",
+        {"connector_cls": StubConnector, "label": "Stubland",
+         "raw_dir": str(tmp_path), "raw_glob": "*.zip", "script": "latin"},
+    )
+    raw = tmp_path / "XX01.zip"
+    raw.write_bytes(b"stub-bytes")
+    db_path = tmp_path / "XX01.sqlite"
+
+    build_db.build_single(str(raw), str(db_path), state_id="stubland")
+
+    assert seen["ac"].ac_code == "XX01"
+    assert seen["ac"].district == "Nowhere"  # resolved via that state's meta
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0] == 1
+    assert conn.execute("SELECT state FROM voters").fetchone()[0] == "stubland"
+    conn.close()
+
+
+def test_build_combined_globs_by_the_states_own_raw_glob(tmp_path, monkeypatch):
+    """The old literal `*.csv` would have matched nothing for a ZIP state and
+    reported "0 ACs" rather than saying the glob was wrong for it."""
+    class StubConnector(StateConnector):
+        def list_constituencies(self):
+            return [Constituency(ac_code="XX01", ac_name="Stubbed", district="Nowhere")]
+
+        def fetch_raw(self, ac, out_dir):  # pragma: no cover - unused here
+            raise NotImplementedError
+
+        def parse_raw(self, raw, ac, roll_year):
+            return [
+                VoterRecord(
+                    state="stubland", district=ac.district, ac_code=ac.ac_code,
+                    ac_name=ac.ac_name, part_no=1, serial_no=1, local_ref="1",
+                    full_name="Stub Voter", full_relative_name="Stub Relative",
+                    relation_code="F", age=40, gender="M", roll_year=roll_year,
+                )
+            ]
+
+    monkeypatch.setitem(
+        build_db.STATE_CONNECTORS, "stubland",
+        {"connector_cls": StubConnector, "label": "Stubland",
+         "raw_dir": str(tmp_path), "raw_glob": "*.zip", "script": "latin"},
+    )
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "XX01.zip").write_bytes(b"stub-bytes")
+    (raw_dir / "notes.csv").write_text("ignored\n")  # the old glob's only match
+    db_path = tmp_path / "combined.sqlite"
+
+    build_db.build_combined(str(raw_dir), str(db_path), state_id="stubland")
+
+    conn = sqlite3.connect(db_path)
+    assert conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0] == 1
+    conn.close()
+
+
+def test_an_unknown_state_is_named_rather_than_crashing_on_a_key_error():
+    with pytest.raises(SystemExit, match="Unknown state: atlantis"):
+        build_db._state_connector("atlantis")

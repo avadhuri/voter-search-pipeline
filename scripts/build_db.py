@@ -1,7 +1,7 @@
 """
 Parse raw state roll files into normalized SQLite database(s). Supports a
 single AC (the original POC path), one state's ACs combined (the original
---combine path, Karnataka-only), multiple states combined into one DB
+--combine path), multiple states combined into one DB
 (--states), and one small file per (state, ac_code) plus a per-state
 catalog (--states ... --per-ac) -- the native artifact set for per-AC-file
 serving (see voter_search_engine's per-AC-file-serving plan; no combined DB
@@ -14,14 +14,17 @@ class and where its raw files live, so this script doesn't hardcode that
 per state.
 
 Usage:
-    build_db.py <raw_csv_path> <sqlite_db_path>
-        Build/overwrite a DB from a single Karnataka AC's raw CSV (matches
-        the original POC's file naming, e.g. data/raw/A085.csv).
+    build_db.py <raw_path> <sqlite_db_path> [--state <state_id>]
+        Build/overwrite a DB from a single AC's raw file, ac_code inferred
+        from the filename (matches the original POC's naming, e.g.
+        data/raw/A085.csv, and equally data/raw/haryana/HR02.zip). --state
+        defaults to karnataka; see DEFAULT_STATE_ID.
 
-    build_db.py --combine <raw_dir> <sqlite_db_path>
-        Build/overwrite one combined DB from every "<AC_CODE>.csv" file in
-        <raw_dir> (as produced by scripts/download_2002_all.py). Karnataka
-        only -- kept as the original POC-regression path.
+    build_db.py --combine <raw_dir> <sqlite_db_path> [--state <state_id>]
+        Build/overwrite one combined DB from every raw AC file in <raw_dir>
+        matching that state's registry raw_glob. Kept as the original
+        POC-regression path; --states below does the same thing without a
+        raw_dir override, and also populates state_coverage.
 
     build_db.py --states karnataka,west_bengal <sqlite_db_path> [--roll-year YYYY]
         Build/overwrite one combined DB across every listed state, each
@@ -51,6 +54,7 @@ Usage:
         that for every state in the build; omit it unless you specifically
         mean to.
 """
+import collections
 import datetime
 import glob
 import os
@@ -60,12 +64,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from states.base import Constituency
-from states.karnataka import KarnatakaConnector
 from states.registry import STATE_CONNECTORS
 from states.roll_years import resolve_roll_year, roll_year_for
 from states.source_urls import resolve_source_url
-from transliteration import backfill_latin_columns
+from transliteration import BackfillResult, backfill_latin_columns
 
 VOTERS_SCHEMA = """
 DROP TABLE IF EXISTS voters;
@@ -163,8 +165,9 @@ INSERT_SQL = """
 INSERT INTO voters (
     state, roll_year, district, ac_code, ac_name, part_no, serial_no,
     local_ref, full_name, full_relative_name, relation_code,
-    relation_label, age, gender, remark, locality, source_url
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    relation_label, age, gender, remark, locality, source_url,
+    full_name_latin, full_relative_name_latin
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 STATE_COVERAGE_INSERT_SQL = """
@@ -188,17 +191,98 @@ INSERT OR IGNORE INTO catalog_locality (state, ac_code, locality) VALUES (?,?,?)
 RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Guardian"}
 
 
-def _load_ac_lookup():
-    """ac_code -> Constituency, from states/meta/ac_meta.json (via the connector's
-    own loader, so this and list_constituencies() can't drift)."""
-    return {ac.ac_code: ac for ac in KarnatakaConnector().list_constituencies()}
+# build_single() and build_combined() predate the state registry: they take a
+# raw *path* rather than a state, so nothing in their arguments says whose
+# connector, meta, roll year and ECI code to use, and both have always
+# resolved to Karnataka. That was never a property of the code -- neither
+# function does anything Karnataka-specific -- only of the argument they
+# don't take, so it is a default here rather than a law: pass `state_id` (or
+# `--state` on the CLI, `STATE=` in the Makefile) and both build any
+# registered state whose raw is one file per AC, which is all three today.
+#
+# Kept as a default rather than made required because `make build-db AC=A085`
+# is the shape people already type and Karnataka is the only state whose raw
+# lands directly in data/raw/. New code should still prefer
+# build_multi_state/build_per_ac: they take state_ids, read raw_dir/raw_glob
+# from the registry, and populate state_coverage, which these two don't.
+DEFAULT_STATE_ID = "karnataka"
 
 
-def _resolve_ac(ac_code, ac_lookup):
-    """Known AC -> its real metadata; unknown code (shouldn't happen given
-    filenames come from ac_meta.json in the first place) -> blank fields,
-    same as the old behavior, rather than raising."""
-    return ac_lookup.get(ac_code) or Constituency(ac_code=ac_code, ac_name="", district="")
+def _state_connector(state_id):
+    """A state's connector via the registry rather than a direct import, so
+    the caller's state_id is the single thing that decides."""
+    if state_id not in STATE_CONNECTORS:
+        raise SystemExit(
+            f"Unknown state: {state_id}. Known: {', '.join(STATE_CONNECTORS)}"
+        )
+    return STATE_CONNECTORS[state_id]["connector_cls"]()
+
+
+def _load_ac_lookup(state_id=DEFAULT_STATE_ID):
+    """ac_code -> Constituency, from that state's committed meta (via the
+    connector's own loader, so this and list_constituencies() can't drift)."""
+    return _ac_lookup(_state_connector(state_id), state_id)
+
+
+class UnknownConstituencyError(ValueError):
+    """A raw file names an ac_code the state's meta doesn't declare."""
+
+
+class DuplicateConstituencyError(ValueError):
+    """A state's meta declares the same ac_code more than once."""
+
+
+def _ac_lookup(connector, state_id):
+    """ac_code -> Constituency for one state, refusing a meta file that
+    declares the same ac_code twice.
+
+    Building the dict alone would silently keep the last entry per code and
+    drop the rest, and the loss is close to invisible: the AC still builds
+    (its raw file is keyed by code, and some entry matched), it just gets
+    another AC's name and district, and `acs_total` under-counts by however
+    many were swallowed. Nothing downstream can tell -- the rows parse,
+    score and rank exactly as they should, and the picker just shows a
+    wrong label. Real instance: an incoming state's generated meta had 44
+    entries for 32 distinct ac_no values, one of them repeated four times.
+    """
+    acs = list(connector.list_constituencies())
+    lookup = {ac.ac_code: ac for ac in acs}
+    if len(lookup) != len(acs):
+        counts = collections.Counter(ac.ac_code for ac in acs)
+        dupes = sorted(f"{code} x{n}" for code, n in counts.items() if n > 1)
+        raise DuplicateConstituencyError(
+            f"{state_id}: list_constituencies() returned {len(acs)} entries "
+            f"for {len(lookup)} distinct ac_code values -- {', '.join(dupes)}. "
+            f"Fix states/meta/{state_id}_ac_meta.json rather than letting the "
+            f"duplicates be silently dropped."
+        )
+    return lookup
+
+
+def _resolve_ac(ac_code, ac_lookup, state_id=None):
+    """Known AC -> its real metadata. An unknown code raises.
+
+    It used to fall back to blank ac_name/district, which reads as harmless
+    -- the filenames come from the meta in the first place, so it "shouldn't
+    happen". But a blank district is not a cosmetic gap on the serving side:
+    the picker's whole primary tier is district, so an AC with no district
+    is one a user cannot navigate to at all, and an AC with no name is one
+    they cannot recognize once there. Both are invisible to every
+    search-quality check, which drives searches by explicit (state,
+    ac_code). A build is offline, re-runnable, and watched by whoever
+    started it -- the right failure direction there is to stop, not to
+    publish an unreachable AC.
+    """
+    ac = ac_lookup.get(ac_code)
+    if ac is None:
+        where = f"{state_id}: " if state_id else ""
+        raise UnknownConstituencyError(
+            f"{where}raw file names ac_code {ac_code!r}, which "
+            f"list_constituencies() doesn't declare. Either the meta is "
+            f"stale (regenerate it) or the file doesn't belong in this "
+            f"state's raw_dir."
+        )
+    return ac
 
 
 def _records_to_rows(records):
@@ -209,9 +293,42 @@ def _records_to_rows(records):
             r.full_relative_name, r.relation_code,
             RELATION_LABELS.get(r.relation_code, r.relation_code),
             r.age, r.gender, r.remark, r.locality, resolve_source_url(r),
+            # Written straight through, blank included. A blank is what
+            # backfill_latin_columns() below looks for; a connector-supplied
+            # value is what it leaves alone. See VoterRecord's own comment.
+            getattr(r, "full_name_latin", "") or "",
+            getattr(r, "full_relative_name_latin", "") or "",
         )
         for r in records
     ]
+
+
+def _report_backfill(result, prefix=""):
+    """Print what the rule-based transliteration managed, and what it didn't.
+
+    The `incomplete` half is the part worth printing: those are names whose
+    romanization still holds native-script characters, because the scheme has
+    no mapping for them (Malayalam chillu forms, Tamil ன -- both common name
+    endings). Such a row is fully built and passes every downstream check
+    while being effectively unfindable by a Latin-script query, so a build
+    that stayed silent about it would hand the discovery to a user who can't
+    find themselves. Not an error: the fix is a connector that supplies
+    full_name_latin itself, which is a change to that state, not to this run.
+    """
+    if not result.transliterated:
+        return
+    print(
+        f"{prefix}Transliterated {result.transliterated} distinct "
+        f"non-Latin name strings to Latin script."
+    )
+    if result.incomplete:
+        examples = ", ".join(f"{native} -> {latin}" for native, latin in result.sample)
+        print(
+            f"{prefix}  WARNING: {result.incomplete} of them still contain "
+            f"native-script characters the scheme has no mapping for, so a "
+            f"Latin-script query will score badly against them. Supply "
+            f"full_name_latin from the connector for this state. e.g. {examples}"
+        )
 
 
 def _finalize(conn):
@@ -244,18 +361,24 @@ def _finalize_voters_only(conn):
     conn.commit()
 
 
-def build_single(raw_csv_path, db_path, roll_year=None):
-    """Build a DB from one AC's raw CSV, inferring ac_code from the filename.
+def build_single(raw_path, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
+    """Build a DB from one AC's raw file, inferring ac_code from the filename.
 
-    Karnataka-only, same as build_combined -- see its docstring for why the
-    year is resolved rather than hardcoded here.
+    Works for any state whose raw is one file per AC -- Karnataka's `A085.csv`
+    and Haryana's `HR02.zip` alike, since parse_raw() takes bytes and the
+    connector decides what they are. `state_id` defaults rather than being
+    required; see DEFAULT_STATE_ID for why. The roll year is resolved from
+    the state rather than written down again, so there stays exactly one
+    place in the repo that says what any given state's year is.
     """
-    roll_year = roll_year if roll_year is not None else resolve_roll_year("karnataka")
-    ac_code = os.path.splitext(os.path.basename(raw_csv_path))[0]
-    connector = KarnatakaConnector()
-    ac = _resolve_ac(ac_code, _load_ac_lookup())
+    roll_year = (
+        roll_year if roll_year is not None else resolve_roll_year(state_id)
+    )
+    ac_code = os.path.splitext(os.path.basename(raw_path))[0]
+    connector = _state_connector(state_id)
+    ac = _resolve_ac(ac_code, _load_ac_lookup(state_id), state_id)
 
-    with open(raw_csv_path, "rb") as f:
+    with open(raw_path, "rb") as f:
         raw = f.read()
     records = connector.parse_raw(raw, ac, roll_year)
 
@@ -270,24 +393,33 @@ def build_single(raw_csv_path, db_path, roll_year=None):
     conn.close()
 
 
-def build_combined(raw_dir, db_path, roll_year=None):
-    """Build one DB from every <AC_CODE>.csv file in raw_dir.
+def build_combined(raw_dir, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
+    """Build one DB from every raw AC file in raw_dir, for one state.
 
-    Karnataka-only legacy path, so the roll year is Karnataka's --
-    resolved rather than written down again, so there stays exactly one
-    place in the repo that says which year that is.
+    This is `build_multi_state([state_id], db_path)` with the raw directory
+    overridden and state_coverage not populated -- the override is the only
+    thing it can still do that build_multi_state can't, since that one takes
+    raw_dir from the registry. Reachable only as `python -m build_db
+    --combine`; no Makefile target uses it. See build_single's docstring for
+    the roll year and DEFAULT_STATE_ID for the state.
     """
-    roll_year = roll_year if roll_year is not None else resolve_roll_year("karnataka")
-    connector = KarnatakaConnector()
-    ac_lookup = _load_ac_lookup()
+    roll_year = (
+        roll_year if roll_year is not None else resolve_roll_year(state_id)
+    )
+    connector = _state_connector(state_id)
+    ac_lookup = _load_ac_lookup(state_id)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
 
-    csv_paths = sorted(glob.glob(os.path.join(raw_dir, "*.csv")))
+    # From the registry, not a hardcoded *.csv -- Karnataka's raw is CSV and
+    # both other live states' is ZIP, and the old literal would have silently
+    # matched nothing for them rather than saying so.
+    raw_glob = STATE_CONNECTORS[state_id]["raw_glob"]
+    csv_paths = sorted(glob.glob(os.path.join(raw_dir, raw_glob)))
     total = 0
     for path in csv_paths:
         ac_code = os.path.splitext(os.path.basename(path))[0]
-        ac = _resolve_ac(ac_code, ac_lookup)
+        ac = _resolve_ac(ac_code, ac_lookup, state_id)
         with open(path, "rb") as f:
             raw = f.read()
         records = connector.parse_raw(raw, ac, roll_year)
@@ -334,13 +466,13 @@ def build_multi_state(state_ids, db_path, roll_year=None):
         info = STATE_CONNECTORS[state_id]
         connector = info["connector_cls"]()
         state_roll_year = roll_year_for(info, state_id, override=roll_year)
-        ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
+        ac_lookup = _ac_lookup(connector, state_id)
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_total = 0
         acs_with_locality = set()
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
-            ac = _resolve_ac(ac_code, ac_lookup)
+            ac = _resolve_ac(ac_code, ac_lookup, state_id)
             with open(path, "rb") as f:
                 raw = f.read()
             records = connector.parse_raw(raw, ac, state_roll_year)
@@ -365,9 +497,7 @@ def build_multi_state(state_ids, db_path, roll_year=None):
             locality_coverage, built_at, state_roll_year,
         ))
 
-    translit_count = backfill_latin_columns(conn, state_ids=state_ids)
-    if translit_count:
-        print(f"Transliterated {translit_count} distinct Devanagari name strings to Latin script.")
+    _report_backfill(backfill_latin_columns(conn, state_ids=state_ids))
     _finalize(conn)
     check_total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
     print(f"\nLoaded {check_total} records across {len(state_ids)} state(s) into {db_path}.")
@@ -431,6 +561,7 @@ def _build_one_ac(task):
             "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
             "row_count": row_count, "file_size_bytes": os.path.getsize(ac_db_path),
             "has_locality": bool(localities), "localities": localities, "skipped": True,
+            "translit": BackfillResult(0, 0, []),
         }
 
     connector = connector_cls()
@@ -441,7 +572,7 @@ def _build_one_ac(task):
     ac_conn = sqlite3.connect(ac_db_path)
     ac_conn.executescript(VOTERS_SCHEMA)
     ac_conn.executemany(INSERT_SQL, _records_to_rows(records))
-    backfill_latin_columns(ac_conn, state_ids=[state_id])
+    translit = backfill_latin_columns(ac_conn, state_ids=[state_id])
     _finalize_voters_only(ac_conn)
     ac_conn.close()
 
@@ -450,6 +581,10 @@ def _build_one_ac(task):
         "ac_code": ac_code, "ac_name": ac.ac_name, "district": ac.district,
         "row_count": len(records), "file_size_bytes": os.path.getsize(ac_db_path),
         "has_locality": bool(localities), "localities": localities, "skipped": False,
+        # Carried up rather than printed here: this runs in a pool worker, so
+        # its stdout interleaves with every other AC's. build_per_ac() sums
+        # them and reports once per state.
+        "translit": translit,
     }
 
 
@@ -490,7 +625,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
         connector_cls = info["connector_cls"]
         connector = connector_cls()
         state_roll_year = roll_year_for(info, state_id, override=roll_year)
-        ac_lookup = {ac.ac_code: ac for ac in connector.list_constituencies()}
+        ac_lookup = _ac_lookup(connector, state_id)
         paths = sorted(glob.glob(os.path.join(info["raw_dir"], info["raw_glob"])))
         state_dir = os.path.join(out_dir, state_id)
         os.makedirs(state_dir, exist_ok=True)
@@ -498,7 +633,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
         tasks = []
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
-            ac = _resolve_ac(ac_code, ac_lookup)
+            ac = _resolve_ac(ac_code, ac_lookup, state_id)
             ac_db_path = os.path.join(state_dir, f"{ac_code}-{contract}.p{patch}.sqlite")
             tasks.append((state_id, connector_cls, path, ac_db_path, contract, patch, ac, state_roll_year))
 
@@ -514,6 +649,14 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
 
         results.sort(key=lambda r: r["ac_code"])
         state_total = sum(r["row_count"] for r in results)
+        _report_backfill(
+            BackfillResult(
+                sum(r["translit"].transliterated for r in results),
+                sum(r["translit"].incomplete for r in results),
+                [s for r in results for s in r["translit"].sample][:5],
+            ),
+            prefix=f"  [{state_id}] ",
+        )
         acs_with_locality = {r["ac_code"] for r in results if r["has_locality"]}
         ac_index_rows = [
             (
@@ -558,8 +701,18 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
 
 
 if __name__ == "__main__":
+    # Pulled out of argv before dispatch, because the branches below match on
+    # argument *count* -- a positional shape this predates argparse and isn't
+    # worth rewriting wholesale for one flag. Applies only to the two legacy
+    # single-state paths; --states carries its own state list.
+    legacy_state_id = DEFAULT_STATE_ID
+    if "--state" in sys.argv:
+        _i = sys.argv.index("--state")
+        legacy_state_id = sys.argv[_i + 1]
+        del sys.argv[_i:_i + 2]
+
     if len(sys.argv) == 4 and sys.argv[1] == "--combine":
-        build_combined(sys.argv[2], sys.argv[3])
+        build_combined(sys.argv[2], sys.argv[3], state_id=legacy_state_id)
     elif "--per-ac" in sys.argv and "--states" in sys.argv:
         state_ids = sys.argv[sys.argv.index("--states") + 1].split(",")
         out_dir = sys.argv[sys.argv.index("--per-ac") + 1]
@@ -575,7 +728,7 @@ if __name__ == "__main__":
         roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
         build_multi_state(sys.argv[2].split(","), sys.argv[3], roll_year=roll_year)
     elif len(sys.argv) == 3:
-        build_single(sys.argv[1], sys.argv[2])
+        build_single(sys.argv[1], sys.argv[2], state_id=legacy_state_id)
     else:
         print(__doc__)
         sys.exit(1)

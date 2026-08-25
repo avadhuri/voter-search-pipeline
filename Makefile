@@ -98,9 +98,16 @@ endif
 # `make build-db STATES=karnataka,west_bengal,haryana` combines every listed
 # state's raw files into $(MULTI_DB). `make build-db` alone defaults to all
 # three live states combined.
-build-db: ## Build a SQLite DB from downloaded rolls (STATES=a,b,c; AC= for one AC)
+#
+# AC= defaults to Karnataka, whose raw is one CSV per AC directly under
+# data/raw/. STATE= builds one AC of any other state, from that state's own
+# raw_dir and file extension -- `make build-db AC=HR02 STATE=haryana`.
+AC_STATE := $(if $(STATE),$(STATE),karnataka)
+AC_RAW_DIR := $(if $(STATE),$(RAW_DIR)/$(STATE),$(RAW_DIR))
+AC_RAW_EXT := $(if $(STATE),zip,csv)
+build-db: ## Build a SQLite DB from downloaded rolls (STATES=a,b,c; AC= for one AC, +STATE= for its state)
 ifdef AC
-	$(PY) -m build_db $(RAW_DIR)/$(AC).csv $(DB_DIR)/$(AC).sqlite
+	$(PY) -m build_db $(AC_RAW_DIR)/$(AC).$(AC_RAW_EXT) $(DB_DIR)/$(AC).sqlite --state $(AC_STATE)
 else ifdef STATES
 	$(PY) -m build_db --states $(STATES) $(MULTI_DB)
 else

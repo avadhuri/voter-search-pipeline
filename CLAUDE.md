@@ -31,6 +31,12 @@ up-to-date source of truth for what's runnable, more so than this file.
 - `states/<state>.py` — one connector module per state (`karnataka.py`,
   `west_bengal.py`, `haryana.py`). All state-specific weirdness (PDF vs
   CSV, legacy font decoding, which ACs are even fetchable) lives here.
+- `states/eci_codes.py` — the one table mapping a `state_id` onto the
+  Election Commission's own state/UT code (S01–S29, U01–U09). Two build-time
+  joins key off it — `roll_years.py` (which roll year to stamp) and
+  `source_urls.py` (which per-part workbook to read) — and a state present in
+  one and absent from the other is a half-wired state, so there is one copy.
+  Declaring a code here is the whole wiring cost for both.
 - `states/registry.py` — single source of truth for which states exist,
   their connector class, and where their raw files live
   (`raw_dir`/`raw_glob`). Both `build_db.py` and the closed app import
@@ -42,16 +48,21 @@ up-to-date source of truth for what's runnable, more so than this file.
   downloaded yet.
 - `scripts/build_db.py` — parses raw files via the registry into one
   SQLite DB (`voters` table + FTS5 index). Single-AC, single-state
-  (`--combine`, legacy Karnataka-only), or multi-state (`--states a,b,c`).
+  (`--combine`), or multi-state (`--states a,b,c`). The first two predate
+  the registry and take a raw path rather than a state, so `--state`
+  (`STATE=` in the Makefile) says which one — defaulting to Karnataka
+  because that is the state they always meant, not because they do anything
+  Karnataka-specific.
 - `scripts/matching.py` — the fuzzy-matching algorithm registry
   (rapidfuzz WRatio, Jaro-Winkler) plus vectorized batch scoring
   (`score_fields_batch`) — shared by `search.py` and the closed app so
   scoring behavior never drifts between them.
 - `scripts/transliteration.py` — bridges a Latin-script query against a
-  Devanagari-script state's data (Haryana). Rule-based
-  (`indic_transliteration` → ITRANS), not ML — see its module docstring
-  for why (`ai4bharat-transliteration` depends on `fairseq`, whose PyPI
-  sdist is broken).
+  non-Latin-script state's data. Rule-based (`indic_transliteration` →
+  ITRANS), not ML — see its module docstring for why
+  (`ai4bharat-transliteration` depends on `fairseq`, whose PyPI sdist is
+  broken), and for the measured per-script quality, which is the reason a
+  connector's own romanization outranks it.
 - `scripts/search.py` — the query CLI (see "Querying a DB" below).
 - `scripts/download_<state>.py` — one downloader per state with a fetch
   script, each resumable (skips files that already exist).
@@ -89,9 +100,50 @@ fetches just that one.
 `make build-db` (no args) builds the combined 3-state demo DB at
 `data/db/multi_state_2002.sqlite`. `make build-db STATES=karnataka` (or
 any other state or comma-list) builds just those states; `make build-db
-AC=A085` builds a single-AC DB. See `scripts/build_db.py`'s module
+AC=A085` builds a single-AC DB (add `STATE=haryana` to build one AC of a
+state other than Karnataka — `make build-db AC=HR02 STATE=haryana`). See `scripts/build_db.py`'s module
 docstring for the exact CLI shapes if you need something the Makefile
 doesn't wrap.
+
+**A build stops on a meta/raw-file disagreement rather than degrading.**
+Two guards in `build_db.py`, both for failures that are invisible
+downstream. `_ac_lookup()` refuses a state whose `list_constituencies()`
+returns the same `ac_code` twice (`DuplicateConstituencyError`) — building
+the dict alone keeps the last entry and silently drops the rest, so an AC
+builds fine under another AC's name and district while `acs_total`
+under-counts. `_resolve_ac()` raises (`UnknownConstituencyError`) on a raw
+file naming an AC the meta doesn't declare, instead of the blank
+`ac_name`/`district` it used to fall back to — a blank district makes an AC
+unreachable in the serving app's picker, whose primary tier is district, and
+a blank name makes it unrecognizable once reached. Neither shows up in any
+search-quality check: those drive searches by explicit `(state, ac_code)`.
+A build is offline, re-runnable and watched, so stopping is the right
+failure direction there; this is not the serving side's degrade-don't-break
+rule.
+
+**A connector's own romanization outranks the rule-based one.** For a
+non-Latin-script state the `*_latin` columns are the only thing a
+Latin-script query scores against, so getting them wrong makes rows that
+build, parse and rank perfectly while being unfindable by the queries real
+users type — the same invisible-downstream class as `roll_year` below. A
+connector that extracted a Latin reading alongside the native name puts it
+on `VoterRecord.full_name_latin` / `full_relative_name_latin`;
+`backfill_latin_columns()` then fills exactly the rows left blank and never
+overwrites one. The precedence is deliberate, not incidental: rule-based
+ITRANS output is a transliteration scheme rather than a name, and the gap
+between the two is script-dependent and in one case severe — measured with
+the app's own scorer, Devanagari ~95 and Telugu ~93, but Gurmukhi ~78 and
+**Tamil ~73** (ச romanizes as "jh", so Selvam becomes "jhelvam"), and
+Malayalam chillu forms (ൻ ൽ ൾ) plus Tamil ன have no mapping in any target
+scheme and survive into the output as native characters. A build therefore
+prints how many distinct names came out with native-script residue, with
+examples: that is a state that wants a connector-supplied `full_name_latin`,
+and saying so at build time is the alternative to a user discovering it by
+not finding themselves. `to_latin()` picks its scheme from the string's own
+first Indic codepoint rather than from the registry tag, because a single
+state's roll can span scripts (Puducherry: Tamil, Telugu and Malayalam).
+`states/base.py`'s `VoterRecord` and `tests/test_transliteration.py` carry
+the rest.
 
 **Each state is stamped with its own roll year, resolved at build time.**
 The "2002 rolls" are not all from 2002 — the intensive-revision cycle ran
@@ -136,8 +188,8 @@ make test
 ```
 
 On a fresh clone, `make test` reports (confirmed by actually running it,
-not assumed): **2 failed, 40 passed, 5 skipped**. Both are expected, not a
-broken setup:
+not assumed): **1 failed, 90 passed, 5 skipped**. Both the failure and the
+skips are expected, not a broken setup:
 
 - **5 skips** — `test_haryana_connector.py` and `test_west_bengal_connector.py`
   need real fixture ZIPs (`data/raw/haryana/HR47.zip`/`HR02.zip`,
@@ -149,10 +201,13 @@ broken setup:
   make download-haryana AC=HR47,HR02
   make download-west-bengal AC=AC146
   ```
-- **2 failures** — `test_cross_reference.py::test_finds_aged_up_match` and
-  `test_karnataka_connector.py::test_parse_raw_normalizes_rows_and_skips_malformed`
-  are pre-existing, unrelated to anything you're likely touching. Don't
-  feel obligated to fix them as a side quest.
+- **1 failure** — `test_karnataka_connector.py::test_parse_raw_normalizes_rows_and_skips_malformed`
+  is pre-existing, unrelated to anything you're likely touching. Don't feel
+  obligated to fix it as a side quest. (`test_cross_reference.py::test_finds_aged_up_match`
+  used to be a second one; it turned out to be a stale hand-built row tuple
+  in the test itself, positionally coupled to `build_db.INSERT_SQL` and two
+  columns short. Fixed, with a docstring saying what to do the next time a
+  column is added.)
 
 ## Adding a new state
 
@@ -187,11 +242,11 @@ current than any summary here.
   silently wrong.
 - **CAPTCHAs are sometimes decorative — verify, don't assume.** Haryana's
   page shows one that never validates server-side.
-  Devanagari-script states need `scripts/transliteration.py`'s rule-based
+  Non-Latin-script states need `scripts/transliteration.py`'s rule-based
   bridge, not an ML one — see that module's docstring for why. You
   shouldn't need to touch it or `matching.py` when adding a state; set
-  `"script": "devanagari"` in the registry entry and the existing bridge
-  handles the rest.
+  `"script"` in the registry entry to the script the rolls are actually in
+  and the existing bridge handles the rest.
 - **Locality mapping via an external dataset is a known-hard, unsolved,
   separate problem** — don't attempt it inline while adding a state. See
   `TODO.md`'s "Locality mapping" section if you want to take this on as

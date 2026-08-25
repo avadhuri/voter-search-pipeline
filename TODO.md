@@ -192,9 +192,9 @@ pattern:
   helpers, any hybrid or unusual sub-format your recon turned up (see
   `HYBRID_ZIP` in the Haryana tests for the pattern: a second, differently-
   shaped fixture file specifically for a layout variant).
-- `pytest` should stay green except the two pre-existing, unrelated known
-  failures noted in `README.md` — don't let your change introduce new ones,
-  and don't feel obligated to fix those two either.
+- `pytest` should stay green except the one pre-existing, unrelated known
+  failure noted in `README.md` — don't let your change introduce new ones,
+  and don't feel obligated to fix that one either.
 
 ## Acceptance criteria
 
@@ -205,7 +205,12 @@ A new state is done when all of the following hold:
    source, format, and any decoding/parsing gotchas — same depth as
    `states/haryana.py`'s.
 2. Registered in `states/registry.py`'s `STATE_CONNECTORS`, including an
-   accurate `"script"` value (`"latin"`/`"devanagari"`).
+   accurate `"script"` value — the script the rolls are actually in
+   (`"latin"`, `"devanagari"`, `"tamil"`, `"telugu"`, `"bengali"`,
+   `"malayalam"`, …), not an approximation. Anything other than `"latin"`
+   routes the state through the transliteration backfill; `"latin"` on a
+   non-Latin state means its `*_latin` columns never fill and a
+   Latin-script query matches none of its rows.
 3. `states/meta/<state>_ac_meta.json` committed, generated from real portal
    data (not hand-typed), covering every AC the connector claims to support.
 4. `scripts/download_<state>.py` exists if the fetch is nontrivial, following
@@ -219,7 +224,7 @@ A new state is done when all of the following hold:
    module docstring.
 7. Tests exist against real fixture data (committed per "Data & inputs"),
    asserting specific real records, not just "doesn't crash" — and the full
-   `pytest` run is green apart from the two pre-existing known failures.
+   `pytest` run is green apart from the one pre-existing known failure.
 8. `python -m build_db --states <newstate> <out>.sqlite` succeeds end-to-end
    against a real downloaded batch and produces a sane row count (spot-check
    against the portal's own AC/elector counts if available).
