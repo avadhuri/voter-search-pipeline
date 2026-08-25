@@ -48,7 +48,7 @@ BENGALI_BLANK_ZIP = os.path.join(RAW_DIR, "AC260.zip")  # no value at all
 def test_locality_extracted_from_a_bengali_typeset_cover():
     records = _parse_first_part(BENGALI_ZIP, "AC001")
     assert records
-    assert {r.locality for r in records} == {"317, নিত্যাননদী (অংশ)"}
+    assert {r.locality for r in records} == {"317, নিত্যানন্দী (অংশ)"}
 
 
 @pytest.mark.skipif(

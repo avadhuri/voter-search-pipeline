@@ -363,8 +363,65 @@ def test_a_repha_after_a_matra_rides_a_conjunct_behind_it():
     rides the consonant ahead. সর্ব্বানন্দ is স ব্ব া র্ ন ন দ -- it rides the
     conjunct behind, which the matra sits after. The tiebreak is whether that
     cluster is a conjunct; reading every such repha as forward-riding gave
-    সব্বার্ননদ, and reading every one as backward-riding would break কার্তিক.
+    সব্বার্নন্দ, and reading every one as backward-riding would break কার্তিক.
     """
-    assert decode(_pua("af85e085c1d46f7865"))[0] == "সর্ব্বাননদ"   # backward
+    assert decode(_pua("af85e085c1d46f7865"))[0] == "সর্ব্বানন্দ"   # backward
     assert decode(_pua("65c685e085d49bc1"))[0] == "দুর্ব্বলা"       # backward
     assert decode(_pua("c26f85d4c13a822482"))[0] == "নির্বাচক"      # forward
+
+
+def test_the_curl_hook_is_never_a_second_aa_matra():
+    """gid 203 was mapped as a duplicate া. It is a hook that rewrites the
+    glyph it lands on, and it has three readings -- রূ, হৃ and ন্ধ -- each of
+    which the font has no other way to draw: র already writes রু with gid 200,
+    হ্র has its own gid 221, the free-standing ৃ is 214, and the table carries
+    no ন্ধ at all. Read as া it corrupted সন্ধ্যা into সস্বা্যা, বন্ধু into
+    বস্বাু, গান্ধী into গাস্বাী, হৃদয় into হাদয় and রূপ into রাপ -- 929 of
+    107,732 name occurrences across six ACs.
+    """
+    assert 203 not in sl.GID_MAP
+    assert 203 in sl.CURL_HOOK_GIDS and 203 in sl.KNOWN_GIDS
+    assert decode(_pua("3f2e85bfcbc682")) == ("জগবন্ধু", [])       # was জগবস্বাু
+    assert decode(_pua("afbfcb8299c1")) == ("সন্ধ্যা", [])          # was সস্বা্যা
+    assert decode(_pua("b3cb8265bb")) == ("হৃদয়", [])              # was হাদয়
+    assert decode(_pua("9acb827c2482c1765d")) == ("রূপকান্ত", [])   # was রাপকান্ত
+    assert decode(_pua("c26f8570cb826f")) == ("নিবন্ধন", [])        # was নিবান
+
+
+def test_a_prebase_matra_waits_for_the_curl_too():
+    """Same rule as the joiner: the curl continues the cluster the matra is
+    waiting on, so releasing the matra early stranded it between the cluster
+    and the glyph that modifies it. This surname is typeset both ways in the
+    roll -- 48 occurrences with the ন্ধ glyph pair and 94 with a half ন and a
+    দ -- and the pre-base ো has to wait in both. The first came out
+    বন্বে্যাপাধ্যায় with gid 203 reported unknown, because out[-1] was the matra.
+    """
+    assert sl.CURL_HOOK_GIDS <= sl.CLUSTER_CONTINUES_GIDS
+    assert decode(_pua("85cdbfcb8299c17cc16d99c1bb")) == ("বন্ধ্যোপাধ্যায়", [])
+    assert decode(_pua("85cd786599c17cc16d99c1bb")) == ("বন্দ্যোপাধ্যায়", [])
+
+
+def test_a_half_consonant_is_not_its_full_form():
+    """gids 61, 94 and 120 sat in GID_MAP as plain চ, ত and ন. They are half
+    forms: across six ACs none of the three is ever followed by a matra, a
+    space or the end of a run -- only by another consonant, which is the
+    signature of a glyph drawn without its right-hand vertical. gid 120 alone
+    accounts for 3,009 occurrences and dropped the hasant out of আনন্দ,
+    গোবিন্দ, নন্দ, চন্দনা, বন্দনা, অরবিন্দ, বৃন্দাবন, মন্মথ and মন্টু.
+
+    The font carries the full forms separately, and the contrast is visible
+    within one name: রতনা is written (154, 87, 130, 111, 193) three times and
+    (154, 94, 121, 193) twenty-four times -- the first is রতনা, the second
+    রত্না, and only the half ত tells them apart.
+    """
+    for gid in (61, 94, 120):
+        assert gid not in sl.GID_MAP
+        assert gid in sl.HALF_GIDS
+    assert decode(_pua("05c16f7865")) == ("আনন্দ", [])            # was আননদ
+    assert decode(_pua("cc2ec1c2857865")) == ("গোবিন্দ", [])       # was গোবিনদ
+    assert decode(_pua("85d67865c1856f")) == ("বৃন্দাবন", [])      # was বৃনদাবন
+    assert decode(_pua("94789663")) == ("মন্মথ", [])              # was মনমথ
+    assert decode(_pua("94784cc682")) == ("মন্টু", [])             # was মনটু
+    assert decode(_pua("85c13d3a82c1")) == ("বাচ্চা", [])          # was বাচচা
+    assert decode(_pua("9a5e79c1")) == ("রত্না", [])               # half ত
+    assert decode(_pua("9a57826fc1")) == ("রতনা", [])             # full ত, same name

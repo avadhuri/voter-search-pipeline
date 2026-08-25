@@ -187,6 +187,29 @@ IGNORE_GIDS = {130, 223}
 KA_HOOK_GIDS = {220}             # ত-conjunct -> ক-conjunct
 DHA_HOOK_GIDS = {222}            # দ্ব -> ধ
 
+# One curl, three readings. This font gives র, হ and ন্ব their own attached
+# forms rather than composing them from a base plus a free-standing sign, and
+# gid 203 is the curl all three attach. What it means therefore depends on the
+# glyph already drawn -- the same trick as the two hooks above, and as 223.
+#
+# It was mapped as a second "া", which is the one thing it never is: across 20
+# ACs it occurs 920 times and follows exactly four gids -- 191, 154 (র), 179
+# (হ) and 112 -- never anything else, and is itself always followed by the 130
+# filler or a ু. Reading it as া turned সন্ধ্যা into সস্বা্যা, জগবন্ধু into
+# জগবস্বাু, হৃদয় into হাদয়, রূপচাঁদ into রাপচাঁদ, and the ERO's own heading
+# নিবন্ধন into নিবান.
+#
+# Each reading is non-redundant, which is what makes it a distinct glyph
+# rather than a duplicate: র already writes রু with 200, হ্র has its own 221,
+# the free-standing ৃ is 214 -- and the table carries no ন্ধ at all, which for
+# a 225-glyph Bengali font is itself evidence of where it went.
+CURL_HOOK_GIDS = {203}
+CURL_HOOK_READINGS = {
+    "র": "র" + "ূ",                      # রূপ, স্বরূপ, অরূপ, নুরূল
+    "হ": "হ" + "ৃ",                      # হৃদয়, হৃষিকেশ
+    "ন" + HASANT + "ব": "ন" + HASANT + "ধ",   # বন্ধু, সন্ধ্যা, গান্ধী, সিন্ধু
+}
+
 # Drawn after the glyph it clears; Unicode wants র + hasant before the cluster.
 REPHA_GIDS = {212, 213}
 
@@ -197,10 +220,17 @@ CLUSTER_TAIL_GIDS = {217, 153}
 # Consonants drawn without their right-hand vertical, completed either by a
 # stem glyph or by the consonant that follows them in a conjunct.
 HALF_GIDS = {
-    43: "ক", 50: "গ", 86: "ন", 108: "দ", 118: "ন", 149: "ম",
-    163: "ল", 167: "শ", 174: "ষ", 178: "স",
+    43: "ক", 50: "গ", 61: "চ", 86: "ন", 94: "ত", 108: "দ", 118: "ন",
+    120: "ন", 149: "ম", 163: "ল", 167: "শ", 174: "ষ", 178: "স",
 }
 STEM_GIDS = {129, 219}           # bare vertical: completes a preceding half form
+
+# Known residue, left as-is deliberately: gid 216 is mapped ু but only ever
+# follows a half স or a half ম (13 each over six ACs), where a matra cannot go.
+# Its 26 occurrences split -- মিস্রা, ইস্রাইল, ইস্রাফিল, সম্রাট and আম্রপালী all
+# read as a below-base র, while আম্বিকা wants a ব -- so neither reading is
+# safe to assert from this corpus, and at 0.024% of name occurrences it is two
+# orders of magnitude below the half-form bug above. Needs more ACs to settle.
 
 # The opposite of a stem: retro-halves the consonant ALREADY emitted. The font
 # draws ব্ব and ধ্ব as a full first consonant, this connector, then a subjoined
@@ -279,7 +309,7 @@ GID_MAP = {
     56: "ঙ" + HASANT + "গ",
 
     # cha-varga
-    58: "চ", 61: "চ",
+    58: "চ",
     62: "ছ",
     63: "জ",
     64: "জ" + HASANT + "জ",
@@ -304,7 +334,7 @@ GID_MAP = {
     85: "ণ" + HASANT + "ড",                    # মণ্ডল -- 416 distinct given names, one surname
 
     # ta-varga (dental)
-    87: "ত", 93: "ত", 94: "ত",
+    87: "ত", 93: "ত",
     89: "ত" + HASANT + "ত",                    # +220 -> ক্ত
     91: "ত" + HASANT + "থ",
     92: "ত" + HASANT + "র",                    # +220 -> ক্র
@@ -316,7 +346,7 @@ GID_MAP = {
     106: "দ" + HASANT + "ম",
     107: "দ" + HASANT + "র",
     109: "ধ",
-    111: "ন", 119: "ন", 120: "ন", 121: "ন",
+    111: "ন", 119: "ন", 121: "ন",
     113: "ন" + HASANT + "ন",
     114: "ন" + HASANT + "স",                    # ফ্রান্সিস, লরেন্স, ফ্লোরেন্স, মুন্সী
     117: "ন" + HASANT + "ড",
@@ -357,10 +387,10 @@ GID_MAP = {
     185: "ড়", 186: "ঢ়", 187: "য়",
     188: "ক" + HASANT + "ষ",
     189: "ক" + HASANT + "ষ" + HASANT + "ম",
-    191: "স" + HASANT + "ব",
+    112: "ন" + HASANT + "ব", 191: "ন" + HASANT + "ব",
 
     # post-base matras and signs
-    193: "া", 203: "া",
+    193: "া",
     196: "ী",
     198: "ু", 199: "ু", 200: "ু", 216: "ু",
     201: "ূ",
@@ -374,10 +404,17 @@ GID_MAP = {
 
 # Every glyph the module knows how to act on. A gid outside this set is
 # reported, not rendered.
+# A pre-base matra buffered ahead of a cluster is released once the cluster is
+# complete. These are the glyphs that continue one, so the matra has to wait
+# for them -- a below-base phala, the joiner, and the curl hook. Releasing it
+# early strands the matra between the cluster and the glyph that modifies it,
+# which is how বন্ধ্যোপাধ্যায় came out বন্বে্যাপাধ্যায় and সাব্বির came out সাবি বর.
+CLUSTER_CONTINUES_GIDS = CLUSTER_TAIL_GIDS | JOINER_GIDS | CURL_HOOK_GIDS
+
 KNOWN_GIDS = (
     set(GID_MAP) | set(HALF_GIDS) | set(PREBASE_GIDS) | SPACE_GIDS
     | IGNORE_GIDS | STEM_GIDS | JOINER_GIDS | REPHA_GIDS | KA_HOOK_GIDS
-    | DHA_HOOK_GIDS
+    | DHA_HOOK_GIDS | CURL_HOOK_GIDS
 )
 
 _TA = "ত"
@@ -478,6 +515,15 @@ def decode(s):
                 out[-1] = out[-1][:-1]          # the half form is now whole
             half = False
 
+        elif gid in CURL_HOOK_GIDS:
+            # Unknown rather than silent when it lands on a glyph with no
+            # reading: a wrong curl corrupts the word either way, and reported
+            # damage is the kind the per-AC census can see.
+            if out and out[-1] in CURL_HOOK_READINGS:
+                out[-1] = CURL_HOOK_READINGS[out[-1]]
+            else:
+                unknown.append(gid)
+
         elif gid in DHA_HOOK_GIDS:
             if out and out[-1] == _DA_BA:
                 out[-1] = _DHA
@@ -515,7 +561,7 @@ def decode(s):
 
         elif gid in CLUSTER_TAIL_GIDS:
             out.append(GID_MAP[gid])
-            if _peek(s, i) not in CLUSTER_TAIL_GIDS | JOINER_GIDS:
+            if _peek(s, i) not in CLUSTER_CONTINUES_GIDS:
                 out.extend(pending)
                 del pending[:]
             half = False
@@ -535,7 +581,7 @@ def decode(s):
                 del held[:]
             # Hold a buffered pre-base matra back over a following phala
             # or joiner -- both continue the cluster the matra is waiting on.
-            if _peek(s, i) not in CLUSTER_TAIL_GIDS | JOINER_GIDS:
+            if _peek(s, i) not in CLUSTER_CONTINUES_GIDS:
                 out.extend(pending)
                 del pending[:]
             half = False
