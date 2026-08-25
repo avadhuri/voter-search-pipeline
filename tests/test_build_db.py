@@ -731,3 +731,94 @@ def test_ac_codes_are_matched_case_and_whitespace_insensitively(tmp_path, monkey
 
     built = sorted(p.name for p in (out / "scopestate").glob("*.sqlite"))
     assert built == ["AC001-c1.p0.sqlite", "AC002-c1.p0.sqlite"]
+
+
+def _karnataka_two_ac_raw(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "A085.csv").write_text(A085_ROWS)
+    (raw_dir / "A012.csv").write_text(A012_ROWS)
+    monkeypatch.setitem(
+        build_db.STATE_CONNECTORS,
+        "karnataka",
+        {
+            "connector_cls": KarnatakaConnector,
+            "label": "Karnataka",
+            "raw_dir": str(raw_dir),
+            "raw_glob": "*.csv",
+            "script": "latin",
+        },
+    )
+    return raw_dir
+
+
+def test_scoped_rebuild_refuses_to_drop_acs_the_catalog_already_serves(tmp_path, monkeypatch):
+    """The failure this guards is invisible everywhere else.
+
+    A catalog is rewritten from its run's results alone, so building only the
+    ACs you are adding silently un-serves every AC you left out -- with a
+    clean build log, correct row counts, a green search-quality suite (it
+    drives explicit (state, ac_code) pairs) and freshness guards that see
+    nothing stale, because what remains genuinely isn't. Only the count of
+    what is covered is wrong, which is a public claim, not bookkeeping.
+    """
+    _karnataka_two_ac_raw(tmp_path, monkeypatch)
+    out_dir = tmp_path / "per_ac"
+
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=0)
+    cat = out_dir / "catalog" / "karnataka.sqlite"
+    conn = sqlite3.connect(cat)
+    assert {r[0] for r in conn.execute("SELECT ac_code FROM ac_index")} == {"A012", "A085"}
+    conn.close()
+
+    with pytest.raises(SystemExit) as excinfo:
+        build_db.build_per_ac(
+            ["karnataka"], str(out_dir), contract="c1", patch=1, ac_codes=["A085"]
+        )
+    message = str(excinfo.value)
+    assert "A012" in message, "the refusal must name what it would have dropped"
+    assert "--allow-catalog-shrink" in message
+
+    # ...and the catalog it refused to write is untouched, so the state is
+    # still fully served after the aborted run.
+    conn = sqlite3.connect(cat)
+    assert {r[0] for r in conn.execute("SELECT ac_code FROM ac_index")} == {"A012", "A085"}
+    conn.close()
+
+
+def test_full_scope_rebuild_reindexes_rather_than_reparses(tmp_path, monkeypatch):
+    """Passing every AC at the current patch is the supported way to extend a
+    published state: the already-built files are detected complete and skipped,
+    so the cost is a COUNT(*) each, and the catalog still comes out whole."""
+    _karnataka_two_ac_raw(tmp_path, monkeypatch)
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=0)
+
+    a012 = out_dir / "karnataka" / "A012-c1.p0.sqlite"
+    before = a012.stat().st_mtime_ns
+
+    build_db.build_per_ac(
+        ["karnataka"], str(out_dir), contract="c1", patch=0, ac_codes=["A085", "A012"]
+    )
+
+    assert a012.stat().st_mtime_ns == before, "an already-built AC must not be rewritten"
+    conn = sqlite3.connect(out_dir / "catalog" / "karnataka.sqlite")
+    assert {r[0] for r in conn.execute("SELECT ac_code FROM ac_index")} == {"A012", "A085"}
+    assert conn.execute(
+        "SELECT acs_digitized FROM state_coverage WHERE state_id = 'karnataka'"
+    ).fetchone()[0] == 2
+    conn.close()
+
+
+def test_allow_catalog_shrink_lets_a_deliberate_narrowing_through(tmp_path, monkeypatch):
+    _karnataka_two_ac_raw(tmp_path, monkeypatch)
+    out_dir = tmp_path / "per_ac"
+    build_db.build_per_ac(["karnataka"], str(out_dir), contract="c1", patch=0)
+
+    build_db.build_per_ac(
+        ["karnataka"], str(out_dir), contract="c1", patch=1,
+        ac_codes=["A085"], allow_catalog_shrink=True,
+    )
+    conn = sqlite3.connect(out_dir / "catalog" / "karnataka.sqlite")
+    assert {r[0] for r in conn.execute("SELECT ac_code FROM ac_index")} == {"A085"}
+    conn.close()

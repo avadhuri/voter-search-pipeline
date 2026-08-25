@@ -136,6 +136,22 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 # decode, so they build into rows with empty names that no search can ever
 # return. Declare the scope.
 #
+# ACS SCOPES THE CATALOG TOO, AND THE CATALOG IS NOT MERGED. build_per_ac
+# writes each state's ac_index and state_coverage from *this run's results
+# alone* -- so an AC left out of ACS is not merely "not rebuilt", it is
+# dropped from the catalog, and app.py serves exactly what the catalog
+# names, with no fallback to a lower patch. Adding 221 new West Bengal ACs
+# via ACS=<just the 221> would therefore have taken the 21 already-live
+# ones off the site. The rule when extending a published state: pass
+# EVERY AC the state should serve, not just the new ones, and keep PATCH=
+# at the current patch with OUT= pointing at the existing tree. The
+# already-built ACs then cost a COUNT(*) each rather than a reparse
+# (_ac_output_is_complete finds their finalize index and returns early),
+# so a full-state ACS list is re-indexing, not rebuilding -- cheap, and
+# the only way the catalog comes out complete. Bumping PATCH= instead
+# makes every listed AC reparse, because the existing files sit at the
+# old patch's filenames.
+#
 # `make build-db-ac STATES=haryana` builds just Haryana's per-AC files;
 # `make build-db-ac` alone defaults to all three live states. Always
 # contract=c1. PATCH=N picks the content revision (default 0, matching a
