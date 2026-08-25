@@ -152,13 +152,19 @@ build-db-ac: ## Build per-AC .sqlite files + catalogs into $(AC_DB_LOCAL_DIR) (S
 # `make check-servable PATH_=data/db/multi_state_2002.sqlite` checks a
 # combined DB instead; STATE= narrows to one state. Non-zero exit means a
 # blocker.
-check-servable: ## Check built data is actually servable (PATH_= to override, STATE=a,b)
+# STATES= is what build-db-ac and push-ac-db-dev take, so every data target
+# accepts it. STATE= stays working: it is what check-servable shipped with,
+# and a flag that silently stops being read is the exact failure mode this
+# file's push discipline exists to avoid.
+state_flag = $(if $(STATES),--state $(STATES),$(if $(STATE),--state $(STATE),))
+
+check-servable: ## Check built data is actually servable (PATH_= to override, STATES=a,b)
 	@test "$(CHECK)" != "0" || { echo "check-servable skipped (CHECK=0)"; exit 0; }; \
-	$(PY) -m check_servable $(if $(PATH_),$(PATH_),$(AC_DB_LOCAL_DIR)) $(if $(STATE),--state $(STATE),)
+	$(PY) -m check_servable $(if $(PATH_),$(PATH_),$(AC_DB_LOCAL_DIR)) $(state_flag)
 
 sample-names: ## Print N native names beside their romanization, per state, to eyeball (N=, STATE=a,b, PATH_=)
 	$(PY) -m check_servable $(if $(PATH_),$(PATH_),$(AC_DB_LOCAL_DIR)) \
-		$(if $(STATE),--state $(STATE),) --sample-names $(if $(N),$(N),)
+		$(state_flag) --sample-names $(if $(N),$(N),)
 
 # Gated on check-servable, deliberately: the failure this prevents is a push
 # of data that builds and searches perfectly while being wrong or unreachable
@@ -192,13 +198,28 @@ sample-names: ## Print N native names beside their romanization, per state, to e
 # mirrors voter_search_engine's gcp-run-push-ac-db, which was fixed for
 # this and whose AC_CATALOG_EXCLUDE this matches deliberately.
 AC_CATALOG_EXCLUDE := ^catalog/.*
-push-ac-db-dev: check-servable ## Copy locally-built per-AC files (make build-db-ac) up to the dev GCS bucket
+push-ac-db-dev: check-servable ## Copy locally-built per-AC files up to the dev GCS bucket (STATES=a,b to scope)
 	@gcloud storage buckets describe "gs://$(GCS_AC_BUCKET_DEV)" --project=$(GCP_PROJECT) >/dev/null 2>&1 || \
 		{ echo "gs://$(GCS_AC_BUCKET_DEV) not reachable -- check 'gcloud auth login'/'gcloud config set project $(GCP_PROJECT)', or ask the maintainer for bucket access"; exit 1; }
 	@echo "  phase 1/2: per-AC files (catalog excluded)"
-	gcloud storage rsync -r $(AC_DB_LOCAL_DIR) gs://$(GCS_AC_BUCKET_DEV) --project=$(GCP_PROJECT) --exclude="$(AC_CATALOG_EXCLUDE)"
+	@if [ -n "$(STATES)" ]; then \
+		for s in $$(echo "$(STATES)" | tr ',' ' '); do \
+			test -d "$(AC_DB_LOCAL_DIR)/$$s" || { echo "  no built files at $(AC_DB_LOCAL_DIR)/$$s -- run 'make build-db-ac STATES=$$s' first"; exit 1; }; \
+			echo "    $$s"; \
+			gcloud storage rsync -r "$(AC_DB_LOCAL_DIR)/$$s" "gs://$(GCS_AC_BUCKET_DEV)/$$s" --project=$(GCP_PROJECT); \
+		done; \
+	else \
+		gcloud storage rsync -r $(AC_DB_LOCAL_DIR) gs://$(GCS_AC_BUCKET_DEV) --project=$(GCP_PROJECT) --exclude="$(AC_CATALOG_EXCLUDE)"; \
+	fi
 	@echo "  phase 2/2: catalog"
-	gcloud storage rsync -r $(AC_DB_LOCAL_DIR)/catalog gs://$(GCS_AC_BUCKET_DEV)/catalog --project=$(GCP_PROJECT)
+	@if [ -n "$(STATES)" ]; then \
+		for s in $$(echo "$(STATES)" | tr ',' ' '); do \
+			test -f "$(AC_DB_LOCAL_DIR)/catalog/$$s.sqlite" || { echo "  no catalog at $(AC_DB_LOCAL_DIR)/catalog/$$s.sqlite"; exit 1; }; \
+			gcloud storage cp "$(AC_DB_LOCAL_DIR)/catalog/$$s.sqlite" "gs://$(GCS_AC_BUCKET_DEV)/catalog/$$s.sqlite" --project=$(GCP_PROJECT); \
+		done; \
+	else \
+		gcloud storage rsync -r $(AC_DB_LOCAL_DIR)/catalog gs://$(GCS_AC_BUCKET_DEV)/catalog --project=$(GCP_PROJECT); \
+	fi
 
 # `make search NAME="Ramesh Kumar"` queries $(MULTI_DB). `make search
 # DB=data/db/A085.sqlite NAME="..." ARGS="--ac A085 --limit 10"` overrides
