@@ -1,7 +1,7 @@
 """
 Parse raw state roll files into normalized SQLite database(s). Supports a
 single AC (the original POC path), one state's ACs combined (the original
---combine path, Karnataka-only), multiple states combined into one DB
+--combine path), multiple states combined into one DB
 (--states), and one small file per (state, ac_code) plus a per-state
 catalog (--states ... --per-ac) -- the native artifact set for per-AC-file
 serving (see voter_search_engine's per-AC-file-serving plan; no combined DB
@@ -14,14 +14,17 @@ class and where its raw files live, so this script doesn't hardcode that
 per state.
 
 Usage:
-    build_db.py <raw_csv_path> <sqlite_db_path>
-        Build/overwrite a DB from a single Karnataka AC's raw CSV (matches
-        the original POC's file naming, e.g. data/raw/A085.csv).
+    build_db.py <raw_path> <sqlite_db_path> [--state <state_id>]
+        Build/overwrite a DB from a single AC's raw file, ac_code inferred
+        from the filename (matches the original POC's naming, e.g.
+        data/raw/A085.csv, and equally data/raw/haryana/HR02.zip). --state
+        defaults to karnataka; see DEFAULT_STATE_ID.
 
-    build_db.py --combine <raw_dir> <sqlite_db_path>
-        Build/overwrite one combined DB from every "<AC_CODE>.csv" file in
-        <raw_dir> (as produced by scripts/download_2002_all.py). Karnataka
-        only -- kept as the original POC-regression path.
+    build_db.py --combine <raw_dir> <sqlite_db_path> [--state <state_id>]
+        Build/overwrite one combined DB from every raw AC file in <raw_dir>
+        matching that state's registry raw_glob. Kept as the original
+        POC-regression path; --states below does the same thing without a
+        raw_dir override, and also populates state_coverage.
 
     build_db.py --states karnataka,west_bengal <sqlite_db_path> [--roll-year YYYY]
         Build/overwrite one combined DB across every listed state, each
@@ -188,27 +191,36 @@ RELATION_LABELS = {"F": "Father", "H": "Husband", "M": "Mother", "O": "Other/Gua
 
 
 # build_single() and build_combined() predate the state registry: they take a
-# raw path rather than a state, so there is nothing in their arguments that
-# says which state's connector, meta, roll year and ECI code to use. They have
-# always been Karnataka's, and the Makefile's `build-db AC=` and
-# `build-db --combine` still reach them. Naming that once beats repeating the
-# literal at each of the five places that need it -- and makes the actual
-# limitation greppable, rather than looking like five independent decisions to
-# special-case one state in a multi-state builder. Anything new should use
-# build_multi_state/build_per_ac, which take state_ids and hardcode nothing.
-LEGACY_STATE_ID = "karnataka"
+# raw *path* rather than a state, so nothing in their arguments says whose
+# connector, meta, roll year and ECI code to use, and both have always
+# resolved to Karnataka. That was never a property of the code -- neither
+# function does anything Karnataka-specific -- only of the argument they
+# don't take, so it is a default here rather than a law: pass `state_id` (or
+# `--state` on the CLI, `STATE=` in the Makefile) and both build any
+# registered state whose raw is one file per AC, which is all three today.
+#
+# Kept as a default rather than made required because `make build-db AC=A085`
+# is the shape people already type and Karnataka is the only state whose raw
+# lands directly in data/raw/. New code should still prefer
+# build_multi_state/build_per_ac: they take state_ids, read raw_dir/raw_glob
+# from the registry, and populate state_coverage, which these two don't.
+DEFAULT_STATE_ID = "karnataka"
 
 
-def _legacy_connector():
-    """The legacy paths' connector, via the registry rather than a direct
-    import, so LEGACY_STATE_ID is the single thing that decides."""
-    return STATE_CONNECTORS[LEGACY_STATE_ID]["connector_cls"]()
+def _state_connector(state_id):
+    """A state's connector via the registry rather than a direct import, so
+    the caller's state_id is the single thing that decides."""
+    if state_id not in STATE_CONNECTORS:
+        raise SystemExit(
+            f"Unknown state: {state_id}. Known: {', '.join(STATE_CONNECTORS)}"
+        )
+    return STATE_CONNECTORS[state_id]["connector_cls"]()
 
 
-def _load_ac_lookup():
-    """ac_code -> Constituency, from states/meta/ac_meta.json (via the connector's
-    own loader, so this and list_constituencies() can't drift)."""
-    return _ac_lookup(_legacy_connector(), LEGACY_STATE_ID)
+def _load_ac_lookup(state_id=DEFAULT_STATE_ID):
+    """ac_code -> Constituency, from that state's committed meta (via the
+    connector's own loader, so this and list_constituencies() can't drift)."""
+    return _ac_lookup(_state_connector(state_id), state_id)
 
 
 class UnknownConstituencyError(ValueError):
@@ -315,22 +327,24 @@ def _finalize_voters_only(conn):
     conn.commit()
 
 
-def build_single(raw_csv_path, db_path, roll_year=None):
-    """Build a DB from one AC's raw CSV, inferring ac_code from the filename.
+def build_single(raw_path, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
+    """Build a DB from one AC's raw file, inferring ac_code from the filename.
 
-    A LEGACY_STATE_ID path -- see that constant for why one state is named
-    at all here. The roll year is resolved from it rather than written down
-    again, so there stays exactly one place in the repo that says what
-    Karnataka's year is.
+    Works for any state whose raw is one file per AC -- Karnataka's `A085.csv`
+    and Haryana's `HR02.zip` alike, since parse_raw() takes bytes and the
+    connector decides what they are. `state_id` defaults rather than being
+    required; see DEFAULT_STATE_ID for why. The roll year is resolved from
+    the state rather than written down again, so there stays exactly one
+    place in the repo that says what any given state's year is.
     """
     roll_year = (
-        roll_year if roll_year is not None else resolve_roll_year(LEGACY_STATE_ID)
+        roll_year if roll_year is not None else resolve_roll_year(state_id)
     )
-    ac_code = os.path.splitext(os.path.basename(raw_csv_path))[0]
-    connector = _legacy_connector()
-    ac = _resolve_ac(ac_code, _load_ac_lookup(), LEGACY_STATE_ID)
+    ac_code = os.path.splitext(os.path.basename(raw_path))[0]
+    connector = _state_connector(state_id)
+    ac = _resolve_ac(ac_code, _load_ac_lookup(state_id), state_id)
 
-    with open(raw_csv_path, "rb") as f:
+    with open(raw_path, "rb") as f:
         raw = f.read()
     records = connector.parse_raw(raw, ac, roll_year)
 
@@ -345,25 +359,33 @@ def build_single(raw_csv_path, db_path, roll_year=None):
     conn.close()
 
 
-def build_combined(raw_dir, db_path, roll_year=None):
-    """Build one DB from every <AC_CODE>.csv file in raw_dir.
+def build_combined(raw_dir, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
+    """Build one DB from every raw AC file in raw_dir, for one state.
 
-    A LEGACY_STATE_ID path -- see that constant for why one state is named
-    at all here, and build_single's docstring for the roll year.
+    This is `build_multi_state([state_id], db_path)` with the raw directory
+    overridden and state_coverage not populated -- the override is the only
+    thing it can still do that build_multi_state can't, since that one takes
+    raw_dir from the registry. Reachable only as `python -m build_db
+    --combine`; no Makefile target uses it. See build_single's docstring for
+    the roll year and DEFAULT_STATE_ID for the state.
     """
     roll_year = (
-        roll_year if roll_year is not None else resolve_roll_year(LEGACY_STATE_ID)
+        roll_year if roll_year is not None else resolve_roll_year(state_id)
     )
-    connector = _legacy_connector()
-    ac_lookup = _load_ac_lookup()
+    connector = _state_connector(state_id)
+    ac_lookup = _load_ac_lookup(state_id)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
 
-    csv_paths = sorted(glob.glob(os.path.join(raw_dir, "*.csv")))
+    # From the registry, not a hardcoded *.csv -- Karnataka's raw is CSV and
+    # both other live states' is ZIP, and the old literal would have silently
+    # matched nothing for them rather than saying so.
+    raw_glob = STATE_CONNECTORS[state_id]["raw_glob"]
+    csv_paths = sorted(glob.glob(os.path.join(raw_dir, raw_glob)))
     total = 0
     for path in csv_paths:
         ac_code = os.path.splitext(os.path.basename(path))[0]
-        ac = _resolve_ac(ac_code, ac_lookup, LEGACY_STATE_ID)
+        ac = _resolve_ac(ac_code, ac_lookup, state_id)
         with open(path, "rb") as f:
             raw = f.read()
         records = connector.parse_raw(raw, ac, roll_year)
@@ -634,8 +656,18 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
 
 
 if __name__ == "__main__":
+    # Pulled out of argv before dispatch, because the branches below match on
+    # argument *count* -- a positional shape this predates argparse and isn't
+    # worth rewriting wholesale for one flag. Applies only to the two legacy
+    # single-state paths; --states carries its own state list.
+    legacy_state_id = DEFAULT_STATE_ID
+    if "--state" in sys.argv:
+        _i = sys.argv.index("--state")
+        legacy_state_id = sys.argv[_i + 1]
+        del sys.argv[_i:_i + 2]
+
     if len(sys.argv) == 4 and sys.argv[1] == "--combine":
-        build_combined(sys.argv[2], sys.argv[3])
+        build_combined(sys.argv[2], sys.argv[3], state_id=legacy_state_id)
     elif "--per-ac" in sys.argv and "--states" in sys.argv:
         state_ids = sys.argv[sys.argv.index("--states") + 1].split(",")
         out_dir = sys.argv[sys.argv.index("--per-ac") + 1]
@@ -651,7 +683,7 @@ if __name__ == "__main__":
         roll_year = int(sys.argv[sys.argv.index("--roll-year") + 1]) if "--roll-year" in sys.argv else None
         build_multi_state(sys.argv[2].split(","), sys.argv[3], roll_year=roll_year)
     elif len(sys.argv) == 3:
-        build_single(sys.argv[1], sys.argv[2])
+        build_single(sys.argv[1], sys.argv[2], state_id=legacy_state_id)
     else:
         print(__doc__)
         sys.exit(1)

@@ -48,7 +48,11 @@ up-to-date source of truth for what's runnable, more so than this file.
   downloaded yet.
 - `scripts/build_db.py` — parses raw files via the registry into one
   SQLite DB (`voters` table + FTS5 index). Single-AC, single-state
-  (`--combine`, legacy Karnataka-only), or multi-state (`--states a,b,c`).
+  (`--combine`), or multi-state (`--states a,b,c`). The first two predate
+  the registry and take a raw path rather than a state, so `--state`
+  (`STATE=` in the Makefile) says which one — defaulting to Karnataka
+  because that is the state they always meant, not because they do anything
+  Karnataka-specific.
 - `scripts/matching.py` — the fuzzy-matching algorithm registry
   (rapidfuzz WRatio, Jaro-Winkler) plus vectorized batch scoring
   (`score_fields_batch`) — shared by `search.py` and the closed app so
@@ -95,7 +99,8 @@ fetches just that one.
 `make build-db` (no args) builds the combined 3-state demo DB at
 `data/db/multi_state_2002.sqlite`. `make build-db STATES=karnataka` (or
 any other state or comma-list) builds just those states; `make build-db
-AC=A085` builds a single-AC DB. See `scripts/build_db.py`'s module
+AC=A085` builds a single-AC DB (add `STATE=haryana` to build one AC of a
+state other than Karnataka — `make build-db AC=HR02 STATE=haryana`). See `scripts/build_db.py`'s module
 docstring for the exact CLI shapes if you need something the Makefile
 doesn't wrap.
 
