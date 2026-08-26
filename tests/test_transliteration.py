@@ -21,7 +21,11 @@ from states.base import Constituency, StateConnector, VoterRecord
 
 @pytest.mark.parametrize("native,expected_start", [
     ("सुभाष", "subh"),      # Devanagari -- Haryana, the state this shipped for
-    ("সুব্রত", "suvr"),       # Bengali
+    # Bengali. Was "suvr" when this case was written -- ITRANS gives ব the
+    # Sanskrit reading of व. The roll's own English settles it: across the 19
+    # Latin-typeset Kolkata ACs the CEO prints Subrata/Subrato/Subroto 7,961
+    # times and Suvrata/Suvrat 5, a 1,592:1 ratio in favour of b.
+    ("সুব্রত", "subr"),       # Bengali
     ("ਗੁਰਪ੍ਰੀਤ", "gura"),      # Gurmukhi
     ("કૃષ્ણ", "kRRi"),       # Gujarati
     ("କୃଷ୍ଣ", "kRRi"),       # Oriya
@@ -381,3 +385,57 @@ def test_a_latin_row_left_blank_is_what_the_servability_gate_wants(tmp_path, mon
         "AND full_name_latin IS NOT NULL AND full_name_latin != ''"
     ).fetchone()[0]
     assert bridged == 1
+
+
+# --- Bengali: the two corrections the real WB build forced --------------
+#
+# Both are Bengali-only on purpose, and both are measured rather than
+# argued. The corpus is a real built AC001 (151,358 rows / 65,749 distinct
+# name strings); the target spellings are not invented, they are the
+# spellings the CEO's own 19 Latin-typeset Kolkata ACs print for the same
+# names.
+
+def test_a_decomposed_nukta_does_not_survive_into_the_latin_column():
+    """The romanized column exists to be reachable from a Latin keyboard,
+    so a Bengali codepoint left inside it is the column failing at its one
+    job. ITRANS passes a lone U+09BC straight through; 29.08% of AC001's
+    distinct name strings came out holding one.
+
+    Written with escapes, not pasted literals, deliberately: the first
+    version of the measurement script that found this bug had a map whose
+    two sides round-tripped to the *same* decomposed form, so every
+    replace() was a silent no-op and the fix looked score-neutral when it
+    had simply never run.
+    """
+    for base, composed in (("ড", "ড়"), ("ঢ", "ঢ়"),
+                           ("য", "য়")):
+        decomposed = base + "়"
+        assert "়" not in tl.to_latin(decomposed), base
+        assert tl.to_latin(decomposed) == \
+            tl.to_latin(composed)
+    # The real row this was found on.
+    assert "়" not in tl.to_latin("কামিনী কীর্ত্তনীয়া")
+
+
+def test_nfc_is_not_the_fix():
+    """U+09DC/09DD/09DF are Unicode composition exclusions, so normalize()
+    leaves the sequence decomposed. This is why the map is explicit -- if
+    this ever starts failing, the map can go."""
+    import unicodedata
+    assert unicodedata.normalize("NFC", "ড়") == "ড়"
+
+
+def test_bengali_ba_romanizes_to_b_not_v():
+    """ITRANS gives ব the Sanskrit reading of व. Bengali ব is /b/ and the
+    Latin-typeset ACs spell it that way."""
+    for bengali, expect in (("বীরেন", "bIrena"), ("চক্রবর্তী", "chakrabartI"),
+                            ("বিবি", "bibi"), ("বিশ্বাস", "bishbAsa")):
+        assert tl.to_latin(bengali) == expect
+
+
+def test_devanagari_keeps_its_v():
+    """The discriminating half. Hindi व genuinely is v/w, so Haryana must
+    not get the Bengali flattening -- and sanscript's Devanagari scheme
+    already handles a bare nukta, so it must not get the map either."""
+    assert tl.to_latin("वर्मा") == "varmA"
+    assert "़" not in tl.to_latin("ड़")

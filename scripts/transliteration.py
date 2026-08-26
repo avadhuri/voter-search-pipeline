@@ -116,6 +116,32 @@ def detect_scheme(text):
     return None
 
 
+# Two Bengali-specific repairs, both measured against the real AC001 build
+# rather than reasoned about. sanscript's Devanagari scheme handles a bare
+# nukta and its Bengali scheme does not, which is why Haryana shows none of
+# this (0 leaked nuktas across a served AC) and West Bengal shows a lot.
+#
+# 1. The connector emits ড়/ঢ়/য় decomposed -- base consonant plus U+09BC --
+#    and ITRANS passes the lone nukta straight through, so the romanized
+#    column comes out holding a Bengali character: কীর্ত্তনীয়া -> 'kIrttanIya়A'.
+#    61,489 of AC001's 151,358 rows were affected. NFC does not fix this:
+#    U+09DC/09DD/09DF are composition exclusions, so normalize() leaves the
+#    sequence decomposed. Hence an explicit map.
+_BENGALI_NUKTA = {
+    "\u09a1\u09bc": "\u09dc",   # ড + nukta -> ড়
+    "\u09a2\u09bc": "\u09dd",   # ঢ + nukta -> ঢ়
+    "\u09af\u09bc": "\u09df",   # য + nukta -> য়
+}
+
+# 2. ITRANS romanizes ব as 'v', the Sanskrit/Hindi reading of व, which the
+#    Bengali scheme inherits. Bengali ব is /b/, and the people searching for
+#    these rows type it that way: বীরেন is Biren, not Vipen; চক্রবর্তী is
+#    Chakrabarty, the spelling the 19 Latin-typeset Kolkata ACs actually
+#    print. Applied to the romanized output, and only for Bengali -- Hindi व
+#    genuinely is v/w, so Haryana must not get this.
+_BENGALI_V_TO_B = str.maketrans("vV", "bB")
+
+
 def to_latin(text):
     """Native-script string -> romanized (ITRANS) string. Empty or
     already-Latin input passes through unchanged (a cheap no-op if this is
@@ -129,6 +155,12 @@ def to_latin(text):
     scheme = detect_scheme(text)
     if scheme is None:
         return text
+    if scheme == sanscript.BENGALI:
+        for decomposed, composed in _BENGALI_NUKTA.items():
+            text = text.replace(decomposed, composed)
+        return sanscript.transliterate(
+            text, scheme, sanscript.ITRANS
+        ).translate(_BENGALI_V_TO_B)
     return sanscript.transliterate(text, scheme, sanscript.ITRANS)
 
 
