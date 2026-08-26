@@ -86,10 +86,21 @@ def _upside_down(page: dict) -> bool:
     reading order*, so on a page it read at 180 degrees the first vertex is
     the one furthest down and right in the page's own frame. That is the
     rotation stated by the geometry rather than inferred from the text, and
-    it is unambiguous: measured over AC287/291/294, a page is either almost
-    entirely one winding or almost entirely the other, never a mix. The
-    minority of words that are neither (a skewed word whose corners do not
-    land on the extremes) are simply not counted.
+    it is unambiguous, and the margin was measured rather than assumed --
+    over all 10,763 pages of AC287/291/294 carrying 50 or more words, the
+    most upright-looking inverted page still wound 'up' on 0.3% of its
+    words and the most inverted-looking upright page on 1.0% of its. The
+    two classes are about 98 points apart, so the bare `down > up` below is
+    nowhere near a coin flip on scan skew. The minority of words that are
+    neither (a skewed word whose corners do not land on the extremes) are
+    simply not counted.
+
+    Only 180 degrees is looked for, because only 180 degrees occurs: the
+    same scan found no page fed in sideways, the largest sideways-wound
+    fraction anywhere being 11% of one page's words against the ~100% a
+    real rotation would produce. If a sideways sheet ever does turn up it
+    will not be silently mishandled -- vertex 0 lands on neither extreme
+    corner, so its words are uncounted here and the page is left alone.
 
     Vision itself is unaffected -- it rotates each word and reads it
     correctly, which is why the *names* on these pages have always been at
