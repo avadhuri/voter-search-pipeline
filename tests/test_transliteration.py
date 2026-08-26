@@ -267,3 +267,117 @@ def test_is_latin_query_and_needs_latin_bridge_cannot_drift():
     for text in ("সন্তোষ", "सुभाष", "RAMESH KUMAR", "কলকাতা 12", "12345"):
         assert tl.is_latin_query(text) is (
             not tl.needs_latin_bridge(text))
+
+
+class _MixedScriptConnector(StateConnector):
+    """West Bengal's real shape, minimised: one state, two ACs, two scripts.
+
+    AC141 is Kolkata -- Latin-typeset, 2,054,521 rows of it in production
+    today. AC001 is Bengali-typeset. They are the same state and always will
+    be, so any rule keyed on the state's registered `script` is answering a
+    question about AC001 and applying it to AC141.
+    """
+
+    state_id = "fakemixed"
+
+    def list_constituencies(self):
+        return [
+            Constituency(ac_code="141", ac_name="Kolkata Fake", district="D"),
+            Constituency(ac_code="001", ac_name="Bengali Fake", district="D"),
+        ]
+
+    def fetch_raw(self, ac, roll_year):
+        raise NotImplementedError
+
+    def parse_raw(self, raw, ac, roll_year):
+        latin = ac.ac_code == "141"
+        common = dict(
+            state=self.state_id, district=ac.district, ac_code=ac.ac_code,
+            ac_name=ac.ac_name, part_no=1, local_ref="", relation_code="F",
+            age=30, gender="M", roll_year=roll_year,
+        )
+        return [VoterRecord(
+            serial_no=1,
+            full_name="RAMESH KUMAR DAS" if latin else "রমেশ মণ্ডল",
+            full_relative_name="SUNIL DAS" if latin else "সুনীল মণ্ডল",
+            **common,
+        )]
+
+
+def _build_mixed(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "rawmixed"
+    raw_dir.mkdir()
+    (raw_dir / "141.csv").write_text("placeholder\n")
+    (raw_dir / "001.csv").write_text("placeholder\n")
+    monkeypatch.setitem(build_db.STATE_CONNECTORS, "fakemixed", {
+        "connector_cls": _MixedScriptConnector,
+        "label": "Fake Mixed",
+        "raw_dir": str(raw_dir),
+        "raw_glob": "*.csv",
+        "script": "bengali",
+    })
+    db_path = tmp_path / "mixed.sqlite"
+    build_db.build_multi_state(["fakemixed"], str(db_path))
+    return sqlite3.connect(db_path)
+
+
+def test_the_build_backfill_skips_a_latin_row_in_a_non_latin_state(tmp_path, monkeypatch):
+    """The discriminating test. Before this, the backfill selected on
+    `state IN (...)` alone, so registering West Bengal as script='bengali'
+    romanized all 2,054,521 of its live Latin Kolkata names -- a no-op
+    to_latin() whose only effect was writing a column those rows have no
+    use for.
+
+    That is not merely wasteful: check_servable's `latin_on_latin_row`,
+    added in the same round, WARNs on precisely a Latin row carrying a
+    populated latin column. The two halves of one change disagreed, and
+    this asserts they now don't.
+    """
+    conn = _build_mixed(tmp_path, monkeypatch)
+    got = dict(conn.execute(
+        "SELECT ac_code, full_name_latin FROM voters ORDER BY ac_code").fetchall())
+    assert got["001"] and got["001"].startswith("ramesha"), got
+    assert not got["141"], (
+        "a Latin name in a non-Latin state was romanized: " + repr(got["141"]))
+
+
+def test_the_lazy_row_backfill_skips_a_latin_row_too(tmp_path, monkeypatch):
+    """Same rule at serve time, where it also costs a persisted UPDATE per
+    row on every Cloud Run instance that touches them -- and the app calls
+    this on the rows a search already fetched, so a single Latin query
+    against a Kolkata AC would have written the whole AC."""
+    conn = _build_mixed(tmp_path, monkeypatch)
+    rows = [
+        {"id": 1, "state": "fakemixed", "full_name": "RAMESH KUMAR DAS",
+         "full_relative_name": "SUNIL DAS",
+         "full_name_latin": "", "full_relative_name_latin": ""},
+        {"id": 2, "state": "fakemixed", "full_name": "রমেশ মণ্ডল",
+         "full_relative_name": "সুনীল মণ্ডল",
+         "full_name_latin": "", "full_relative_name_latin": ""},
+    ]
+    touched = tl.backfill_latin_for_rows(conn, rows, {"fakemixed"})
+    assert touched == 1, "the Latin row should not have been touched"
+    assert rows[0]["full_name_latin"] == ""
+    assert rows[1]["full_name_latin"].startswith("ramesha")
+
+
+def test_a_latin_row_left_blank_is_what_the_servability_gate_wants(tmp_path, monkeypatch):
+    """Ties the two halves together rather than asserting them separately:
+    run the build, then run check_servable's own per-row counter over the
+    result. A disagreement here is the bug this pair of tests exists for,
+    and asserting it through the real counter means a future change to
+    either half cannot quietly re-open it."""
+    conn = _build_mixed(tmp_path, monkeypatch)
+    conn.create_function(
+        "needs_latin_bridge", 1, lambda t: 1 if tl.needs_latin_bridge(t) else 0)
+    latin_on_latin = conn.execute(
+        "SELECT COUNT(*) FROM voters WHERE NOT needs_latin_bridge(full_name) "
+        "AND full_name_latin IS NOT NULL AND full_name_latin != ''"
+    ).fetchone()[0]
+    assert latin_on_latin == 0
+    # ...and the half that must still happen: the Bengali row is bridged.
+    bridged = conn.execute(
+        "SELECT COUNT(*) FROM voters WHERE needs_latin_bridge(full_name) "
+        "AND full_name_latin IS NOT NULL AND full_name_latin != ''"
+    ).fetchone()[0]
+    assert bridged == 1

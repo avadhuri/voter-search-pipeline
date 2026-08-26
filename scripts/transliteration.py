@@ -219,7 +219,8 @@ def ensure_latin_columns(conn):
 
 
 def backfill_latin_columns(conn, state_ids=None, only_missing=True):
-    """Populate *_latin columns for every non-Latin-script state's rows, one
+    """Populate *_latin columns for every row whose own name needs a Latin
+    bridge, in the non-Latin-script states, one
     distinct string at a time via a temp-table join (not a per-row UPDATE --
     at 183K distinct strings that's the difference between ~3s and minutes).
 
@@ -256,7 +257,15 @@ def backfill_latin_columns(conn, state_ids=None, only_missing=True):
             f"AND {column} != '' {missing_clause}",
             target_states,
         ).fetchall()
-        distinct_values = [r[0] for r in rows]
+        # The state's registry `script` says only that *some* row here may be
+        # non-Latin; it is a routing hint for whether to run this pass at all.
+        # Whether a given name needs romanizing is a fact about that name.
+        # West Bengal is why: its Kolkata ACs are Latin-typeset and its other
+        # ~265 ACs are Bengali, in one state, permanently. Romanizing a Latin
+        # name is a no-op that still writes a column, and check_servable's
+        # `latin_on_latin_row` -- the per-row counterpart added alongside this
+        # -- warns on exactly the rows this would then have produced.
+        distinct_values = [r[0] for r in rows if needs_latin_bridge(r[0])]
         if not distinct_values:
             continue
 
@@ -298,6 +307,11 @@ def backfill_latin_for_rows(conn, rows, non_latin_states):
 
     Treats "" the same as NULL, matching backfill_latin_columns() -- a
     connector-supplied value is never recomputed, a blank one always is.
+
+    A row is skipped unless its own name carries characters a Latin query
+    cannot type. The state check above it is the cheap filter, not the
+    decision: it answers "could anything here be non-Latin", and only
+    needs_latin_bridge() answers "does this name need romanizing".
     """
     updates = []
     for r in rows:
@@ -306,7 +320,11 @@ def backfill_latin_for_rows(conn, rows, non_latin_states):
         new_vals = {}
         for column in TRANSLIT_COLUMNS:
             latin_column = f"{column}_latin"
-            if not r.get(latin_column) and r.get(column):
+            # Per-row, not per-state, for the same reason as the build-time
+            # pass above -- and here it also costs a persisted UPDATE per row
+            # on every serving instance that touches them.
+            if (not r.get(latin_column) and r.get(column)
+                    and needs_latin_bridge(r[column])):
                 new_vals[latin_column] = to_latin(r[column])
         if new_vals:
             r.update(new_vals)
