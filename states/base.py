@@ -30,6 +30,13 @@ class UnparseableRollError(Exception):
     """
 
 
+# The two values VoterRecord.name_absence takes. Named here rather than
+# spelled as literals in each connector so the alarm and the connectors
+# cannot drift apart on a string.
+NAME_ABSENT_IN_SOURCE = "source"   # the roll itself carries no name here
+NAME_UNREAD = "unread"             # a name is on the page; we could not read it
+
+
 @dataclass
 class Constituency:
     """One assembly constituency (AC), as listed by a state's electoral portal."""
@@ -85,6 +92,25 @@ class VoterRecord:
     # module docstring for the measured per-script numbers.
     full_name_latin: str = ""
     full_relative_name_latin: str = ""
+
+    # Why this row has no usable name, when it has none. Empty means the row
+    # carries a name; build_db.py's per-part alarm only ever looks at this
+    # field on rows whose full_name holds no letter at all.
+    #
+    # The distinction the alarm is built on is NAME_ABSENT_IN_SOURCE vs
+    # NAME_UNREAD -- the roll printed nothing there, versus a name is on the
+    # page and this connector could not read it. Only the second is a defect
+    # with a fix, and only the second is counted.
+    #
+    # A blank name that declares nothing counts as NAME_UNREAD. That is the
+    # deliberate direction: a connector that says nothing about a name it
+    # dropped must not thereby buy the alarm's silence, and the two cases
+    # already in the tree are both genuinely unread -- Haryana's
+    # "no voter name in row" and West Bengal's undecodable second Bengali
+    # font -- so the default is also what they mean. Declare
+    # NAME_ABSENT_IN_SOURCE only where the source really is blank; it is an
+    # assertion that there is nothing to recover.
+    name_absence: str = ""
 
 
 class StateConnector:
