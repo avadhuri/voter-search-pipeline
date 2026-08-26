@@ -411,11 +411,34 @@ def _report_backfill(result, prefix=""):
 # the right number. _report_nameless prints the rate of every tripping part
 # for that reason: if the band ever fills, the report is where it shows up
 # first, rather than in a threshold quietly moved to make a build quiet.
+#
+# A second corpus corroborates that gap without narrowing it. Scanning the 172
+# finalized West Bengal p3 per-AC files -- 26.9M rows, 665,521 carrying no
+# name -- leaves a residual of 88 nameless rows across 43 ACs once five
+# identified populations are set aside. Two limits on what that buys, both of
+# which matter more than the number does:
+#
+# It is measured per AC, and both thresholds here are per part. 88 rows across
+# 43 ACs cannot be turned into a per-part rate without knowing how they
+# concentrate, and NAMELESS_PART_MIN_COUNT is exactly what decides whether a
+# concentration matters. So this corroborates the picture at AC granularity;
+# it is not a second measurement of the quantity these thresholds test.
+#
+# And 665,521 is not a count of damaged source data. The largest population in
+# it was labelled "name in an unrecognized Bengali-script font" -- on the row,
+# in production -- until it turned out to be readable ASCII we discarded over
+# a .notdef glyph: our defect, not the source's. Two of those ACs measure
+# 36.3% and 57.5% recoverable by that one classification fix. So the honest
+# reading is "residual after five identified populations", not "healthy
+# background rate" -- the latter asserts the remainder is unfixable, which is
+# not established. The bracket survives either way: a population that later
+# proves recoverable was still ~100% nameless *before* the fix, so it cannot
+# move the gap between the worst healthy part and the lightest damaged one.
 NAMELESS_PART_RATE = 0.10
 # The minimum count is what stops a small part from tripping on noise: at 449
 # rows, 7 nameless is 1.6%, but the same 7 in a 60-row part is 12%. On the
-# corpus above it excludes exactly one part -- AC047/part0109, 1 nameless row
-# of 1 -- which is precisely what it is for.
+# Shree-Lipi corpus above it excludes exactly one part -- AC047/part0109, 1
+# nameless row of 1 -- which is precisely what it is for.
 NAMELESS_PART_MIN_COUNT = 20
 
 
