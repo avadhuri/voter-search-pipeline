@@ -353,8 +353,13 @@ def test_a_prebase_matra_waits_for_the_joiner():
     """A pre-base matra is released once its cluster is complete, and the
     joiner continues that cluster. Releasing it early left the joiner with a
     matra behind it instead of a consonant, so the hasant was dropped and the
-    repha then seated against the matra: সর্ব্বেশবর came out সবের্বশবর."""
-    assert decode(_pua("afcd85e085d4a68c9a"))[0] == "সর্ব্বেশবর"
+    repha then seated against the matra: সর্ব্বেশ্বর came out সবের্বশবর.
+
+    The expectation here used to read সর্ব্বেশবর, missing the শ্ব hasant --
+    the gid-140 defect, sitting inside the fixture of a test about a different
+    glyph, asserted as correct. Nothing about this test could have caught it:
+    what it exercises is the joiner, and the joiner works."""
+    assert decode(_pua("afcd85e085d4a68c9a"))[0] == "সর্ব্বেশ্বর"
     assert decode(_pua("afc1c285e0859a"))[0] == "সাব্বির"        # was সাবি বর
 
 
@@ -425,3 +430,28 @@ def test_a_half_consonant_is_not_its_full_form():
     assert decode(_pua("85c13d3a82c1")) == ("বাচ্চা", [])          # was বাচচা
     assert decode(_pua("9a5e79c1")) == ("রত্না", [])               # half ত
     assert decode(_pua("9a57826fc1")) == ("রতনা", [])             # full ত, same name
+
+
+def test_the_subjoined_ba_is_not_a_standalone_ba():
+    """gid 140 sat in GID_MAP as a plain ব. It is the ba-phala -- the ব drawn
+    UNDER its base -- so mapping it as a letter dropped the hasant out of every
+    -শ্বর name in the state. It never appears word-initially, and 216 of its
+    217 occurrences follow gid 166 শ; gid 133 is the genuine standalone ব that
+    follows a শ.
+    """
+    assert 140 not in sl.GID_MAP
+    assert decode(_pua("98cd4382a68c9a")) == ("যজ্ঞেশ্বর", [])      # AC205, was যজ্ঞেশবর
+    assert decode(_pua("2482c1cd94a68c9a")) == ("কামেশ্বর", [])     # AC161, was কামেশবর
+
+    # The negative case, which matters more than either of those: a genuine
+    # standalone ব after শ must still decode as শব. Removing gid 140 from the
+    # table is only right if the font really does keep a second glyph for that,
+    # and this cell settles it -- AC061 prints both in one name. শিব is drawn
+    # with gid 133 and বিশ্বাস with gid 140, and the old table read it
+    # শিবপদ বিশবাস: the ব the font drew as a letter came through, the one it
+    # drew as a phala lost its hasant. A fix that over-reached would spell this
+    # শি্বপদ.
+    assert decode(_pua("c2a6857c6503c285a68cc1af")) == ("শিবপদ বিশ্বাস", [])
+    # Unchanged by this commit in either direction -- gid 133 was already
+    # right and stays right.
+    assert decode(_pua("cc2482a685038594d46f")) == ("কেশব বর্মন", [])

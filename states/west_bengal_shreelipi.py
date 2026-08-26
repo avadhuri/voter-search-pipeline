@@ -253,6 +253,17 @@ STEM_GIDS = {129, 219}           # bare vertical: completes a preceding half for
 # rides: পাবর্্বতী instead of পার্ব্বতী.
 JOINER_GIDS = {224}
 
+# gid 140 was read as a bare ব, which spelled every -eshwar/-ishwa name in the
+# corpus without its hasant: বিশ্বকর্মা as বিশবকর্মা, খগেশ্বর as খগেশবর,
+# যজ্ঞেশ্বর as যজ্ঞেশবর -- including সর্ব্বেশ্বর, which the note above cites as
+# a name that reads correctly and which in fact came out সর্ব্বেশবর. It is not
+# a ব. In 216 of 217 occurrences it is preceded by gid 166 (শ) and it is never
+# word-initial, and the font keeps a separate glyph -- gid 133, which we
+# already decoded correctly -- for a genuine standalone ব after শ. The font
+# distinguishes শব from শ্ব; the table did not. It hangs its hasant on the
+# letter already in `out` for the same reason the joiner above does.
+BA_PHALA_GIDS = {140}            # subjoined ব -- শ + this is শ্ব, never শব
+
 # Matras the font draws to the LEFT of the cluster they follow in Unicode.
 PREBASE_GIDS = {
     194: "ি",   # ি
@@ -357,7 +368,7 @@ GID_MAP = {
     126: "প" + HASANT + "ত",
     127: "প" + HASANT + "র",
     131: "ফ",
-    133: "ব", 140: "ব", 141: "ব",
+    133: "ব", 141: "ব",             # 140 is the subjoined form, see BA_PHALA_GIDS
     135: "ব" + HASANT + "দ",
     143: "ভ", 146: "ভ",                        # (স্তম্ভ)
     145: "ভ" + HASANT + "র",
@@ -409,12 +420,13 @@ GID_MAP = {
 # for them -- a below-base phala, the joiner, and the curl hook. Releasing it
 # early strands the matra between the cluster and the glyph that modifies it,
 # which is how বন্ধ্যোপাধ্যায় came out বন্বে্যাপাধ্যায় and সাব্বির came out সাবি বর.
-CLUSTER_CONTINUES_GIDS = CLUSTER_TAIL_GIDS | JOINER_GIDS | CURL_HOOK_GIDS
+CLUSTER_CONTINUES_GIDS = (CLUSTER_TAIL_GIDS | JOINER_GIDS | CURL_HOOK_GIDS
+                          | BA_PHALA_GIDS)
 
 KNOWN_GIDS = (
     set(GID_MAP) | set(HALF_GIDS) | set(PREBASE_GIDS) | SPACE_GIDS
     | IGNORE_GIDS | STEM_GIDS | JOINER_GIDS | REPHA_GIDS | KA_HOOK_GIDS
-    | DHA_HOOK_GIDS | CURL_HOOK_GIDS
+    | DHA_HOOK_GIDS | CURL_HOOK_GIDS | BA_PHALA_GIDS
 )
 
 _TA = "ত"
@@ -574,8 +586,13 @@ def decode(s):
                 out.append(HALF_GIDS[gid] + HASANT)
                 half = True
 
-        elif gid in GID_MAP:
-            out.append(GID_MAP[gid])
+        elif gid in GID_MAP or gid in BA_PHALA_GIDS:
+            if gid in BA_PHALA_GIDS:
+                if out and not _is_mark(out[-1]) and not out[-1].endswith(HASANT):
+                    out[-1] += HASANT           # the letter drawn before it is a half form
+                out.append("ব")
+            else:
+                out.append(GID_MAP[gid])
             if held:
                 out[-1:-1] = held
                 del held[:]
