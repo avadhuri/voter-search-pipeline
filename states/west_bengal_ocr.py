@@ -109,8 +109,14 @@ moves an elector out of reach of the person looking for them, while
 `age IS NULL` is already spared by the query (CLAUDE.md, "An unusable age
 means 'unknown', never 'not your match'"). That is why the rule is
 conservative in one direction only: everything it is not sure of becomes
-NULL. Coverage is 78.54% of rows overall and varies by AC -- 87.55%
-AC287, 71.05% AC291, 76.85% AC294 -- against 0% before.
+NULL. Coverage is **78.79%** of rows overall and varies by AC -- 87.37%
+AC287, 72.20% AC291, 77.17% AC294 -- against 0% before. Those are counted
+by replaying every cached Vision response for all 583 parts through this
+module and asking how many of the 407,386 rows come back with a non-NULL
+age; the method is written down because the figure it replaces (78.54%,
+87.55/71.05/76.85) is one whose own method can no longer be reconstructed,
+which is the only reason it went unnoticed that the corpus had moved
+underneath it.
 
 A token that could not be *found* still gets an "age not read" remark,
 because then nothing was trimmed and the relative's name may carry the
