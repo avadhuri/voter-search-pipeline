@@ -57,3 +57,16 @@ states = "states"
 
 [tool.setuptools.package-data]
 states = ["meta/*.json", "meta/sir_source_urls/*.json", "meta/sir_source_urls/*.xlsx"]
+
+[tool.pytest.ini_options]
+# Test the tree pytest was started in, not the editable install's.
+#
+# Seven test modules import a scripts/ module by bare name (`import
+# build_db`). Without this, that resolves through the editable install's
+# finder to whichever checkout was `pip install -e`'d -- and build_db's own
+# `sys.path.insert(0, <its repo root>)` then puts that checkout ahead of this
+# one for every `from states...` afterwards. Running the suite inside a git
+# worktree therefore silently tested the *other* tree: a worktree carrying a
+# broken states/ change reported green, and one carrying a fix reported its
+# own tests failing against code that did not have it.
+pythonpath = ["scripts", "."]
