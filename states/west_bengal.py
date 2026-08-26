@@ -128,7 +128,11 @@ GENDER_NORMALIZE = {
 
 _GID_NAME = re.compile(r"^G([0-9A-Fa-f]{2,4})$")
 PUA_BASE = 0xE000        # undecoded glyph gid N -> chr(PUA_BASE + N)
+MAC_LATIN_MIN = 3        # first gid of the Latin run in Macintosh glyph order
 MAC_LATIN_MAX = 97       # last gid of the Latin run in Macintosh glyph order
+# gids 0/1/2 are .notdef/.null/nonmarkingreturn -- present in a subset's
+# Differences array, never carrying text.
+TEXTLESS_MAX_GID = 2
 
 
 def _patch_pdfminer_gid_encoding():
@@ -151,12 +155,33 @@ def _patch_pdfminer_gid_encoding():
     def get_encoding(cls, name, diff=None):
         pairs = _gid_pairs(diff) if diff else None
         if pairs:
-            # Latin subsets stay inside the Macintosh Latin run; a Bengali
-            # subset always reaches past it, and its low gids are Bengali
-            # glyphs rather than ASCII -- so the rule is decided per font.
-            latin = all(3 <= gid <= MAC_LATIN_MAX for _, gid in pairs)
+            # Two separate questions, and conflating them is what this
+            # function got wrong for months:
+            #
+            #   1. Is this font a Latin subset?  Latin subsets stay inside
+            #      the Macintosh Latin run; a Bengali subset always reaches
+            #      past it.  Only text-bearing glyphs are evidence -- a
+            #      .notdef says nothing about what script a font is in, so
+            #      it gets no vote.  Giving it one made a single textless
+            #      entry veto every readable glyph beside it, sending whole
+            #      pages of ASCII into the private-use area to be blanked
+            #      downstream as "an unrecognized Bengali-script font".
+            #
+            #   2. Can this glyph be rendered as ASCII?  That is per glyph,
+            #      not per font, and it belongs here in the mapping.
+            textual = [gid for _, gid in pairs if gid > TEXTLESS_MAX_GID]
+            # An all-textless font carries no text and so cannot be shown to
+            # be Latin; a vacuous all() would call it Latin anyway.
+            latin = bool(textual) and all(gid <= MAC_LATIN_MAX for gid in textual)
+            if not latin:
+                return {code: chr(PUA_BASE + gid) for code, gid in pairs}
+            # Every textual gid is inside the run, so the only codes reaching
+            # the else here are the textless ones.  They contribute no
+            # characters -- which is what "" says exactly, where dropping the
+            # code would make pdfminer substitute a literal "(cid:N)" into
+            # the name and chr(gid + 29) would put a control character there.
             return {
-                code: (chr(gid + 29) if latin else chr(PUA_BASE + gid))
+                code: (chr(gid + 29) if MAC_LATIN_MIN <= gid <= MAC_LATIN_MAX else "")
                 for code, gid in pairs
             }
         return original(name, diff)
@@ -274,6 +299,18 @@ def _bn_key(text):
 
 N_COLS = 8
 COL_SL, COL_HOUSE, COL_NAME, COL_REL, COL_RELNAME, COL_SEX, COL_AGE, COL_EPIC = range(8)
+# Columns a dropped glyph is worth naming in a remark, with the label to name
+# it by. COL_HOUSE is absent deliberately: it is not stored on VoterRecord, so
+# a remark about it points at nothing a reader can go and look at.
+TEXTLESS_FIELDS = (
+    (COL_SL, "serial_no"),
+    (COL_NAME, "name"),
+    (COL_REL, "relation_code"),
+    (COL_RELNAME, "relative's name"),
+    (COL_SEX, "gender"),
+    (COL_AGE, "age"),
+    (COL_EPIC, "EPIC no"),
+)
 
 ROW_TOL = 3.0      # pt; serial numbers sit on a slightly different baseline
 RUN_GAP = 2.0      # pt; wider than this between glyphs means a word break
@@ -340,6 +377,25 @@ def _cell_text(chars):
         parts.append(BN_ASCII_GID.get(_gid_of(t), t) if _is_undecoded(t) else t)
         prev = ch["x1"]
     return "".join(parts).strip()
+
+
+def _consumed_textless_glyph(chars):
+    """Whether this cell swallowed a glyph that renders no character.
+
+    A .notdef inside an otherwise-Latin subset maps to "" (see
+    _patch_pdfminer_gid_encoding).  That is exact -- it renders nothing on the
+    page -- but it is also, after the fact, indistinguishable from the
+    character never having been there, which is the one thing "" cannot say
+    about itself.  Measured over the 21 affected constituencies it is rare:
+    160 cells in 205,402 rows, 0.016%.  Rare is not none, and where it lands
+    between two letters the cell comes out a plausible WRONG value -- a name
+    short a letter, an EPIC short a digit -- which nothing downstream can
+    distinguish from a correct one.
+
+    pdfplumber keeps the char object with empty text, so the fact is readable
+    here and nowhere after here.  Read it, and let _record declare it.
+    """
+    return any(ch["text"] == "" for ch in chars)
 
 
 def _boundaries(centres, data_rows, measure_serial=True):
@@ -709,36 +765,31 @@ def _part_no_of(member):
     return int(m.group(1)) if m else None
 
 
-# The three kinds of part PDF this state ships, as parse_raw() dispatches on
-# them. Named rather than inferred so that no path is ever reached by another
-# one failing: a scan run through the glyph decoder, or a Shree-Lipi part run
-# through the OCR responses, does not raise -- it yields confident wrong
-# names, which is the one failure this connector cannot notice downstream.
-LAYER_SCANNED = "scanned"      # no text layer at all -- pixels (AC287/291/294)
-LAYER_PUA = "pua"              # glyph ids with no Unicode meaning of their own
-LAYER_LATIN = "latin"          # text that is already text (the Kolkata ACs)
+def _has_text_layer(pdf_bytes):
+    """Whether a part PDF carries extractable text at all, read off the file.
 
+    This is the whole of what parse_raw() needs, and deliberately the whole of
+    what this answers. A part with text goes to the glyph/Shree-Lipi path and
+    one without goes to the stored OCR responses; naming the two rather than
+    inferring them keeps either from being reached by the other failing, which
+    is the one failure this connector cannot notice downstream -- a scan run
+    through the glyph decoder yields confident wrong names, not an error.
 
-def _text_layer(pdf_bytes):
-    """Which of the three a part PDF is, read off the file itself.
+    It used to also report Latin-vs-PUA, and that second answer was never safe
+    to give per AC: AC025 and AC026 are mixed, most of their parts Shree-Lipi
+    Bengali and a minority not (see looks_like_shreelipi()). The authority on
+    which a given part is belongs in _parse_part(), per part, and stays there.
+    Both callers already routed the two identically, so the distinction was
+    inert -- and inert is the hazard, not the reassurance: it is a predicate
+    whose meaning moves under any change to what decodes cleanly, waiting for
+    someone to make it load-bearing on the strength of its name.
 
-    Asked of an AC's first part. Cheap on the two typeset cases: the loop
-    stops at the first page carrying characters, which for a typeset roll is
-    page one. A scan costs a full pass over its 12-28 pages, once per AC.
-
-    LATIN vs PUA is decided here for the dispatch only. The *authority* on
-    which of the two a given part is stays in _parse_part(), per part, because
-    AC025 and AC026 are mixed -- most of their parts are Shree-Lipi Bengali
-    and a minority are not (see looks_like_shreelipi()). An AC-wide answer
-    would be wrong for those two; what is safely AC-wide is only whether
-    there is a text layer at all, and that is what the routing turns on.
+    Asked of an AC's first part. Cheap on a typeset roll: the loop stops at the
+    first page carrying characters, which is page one. A scan costs a full pass
+    over its 12-28 pages, once per AC.
     """
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            if page.chars:
-                text = page.extract_text() or ""
-                return LAYER_PUA if _has_undecoded(text) else LAYER_LATIN
-    return LAYER_SCANNED
+        return any(page.chars for page in pdf.pages)
 
 
 
@@ -821,13 +872,19 @@ def _segment_rows(centres, body, own_columns=True):
     out, prev_top = [], None
     for row in body:
         top = min(ch["top"] for ch in row)
-        cells = [_cell_text(c) for c in _split_row(row, bounds)]
+        split = _split_row(row, bounds)
+        cells = [_cell_text(c) for c in split]
+        # Parallel to `cells`, never merged into it: the flag has to travel
+        # without changing a single character of the text, because the text is
+        # what _starts_with_serial reads to decide the row is a row at all.
+        textless = [_consumed_textless_glyph(c) for c in split]
         if cells[COL_SL].isdigit():
-            out.append(cells)
+            out.append([cells, textless])
         elif out and not cells[COL_SL] and top - prev_top <= reach:
             for i, extra in enumerate(cells):
                 if extra:
-                    out[-1][i] = (out[-1][i] + " " + extra).strip()
+                    out[-1][0][i] = (out[-1][0][i] + " " + extra).strip()
+                out[-1][1][i] = out[-1][1][i] or textless[i]
         else:
             continue
         prev_top = top
@@ -992,8 +1049,8 @@ class WestBengalConnector(StateConnector):
         applies to it: its rows come from a Cloud Vision response fetched
         earlier and stored on disk, reassembled from word geometry rather than
         extracted (see _parse_scanned and states/west_bengal_ocr.py). Which of
-        the three a download is gets decided once, up front, by _text_layer --
-        never by one path failing into the next.
+        the two a download is gets decided once, up front, by _has_text_layer
+        -- never by one path failing into the next.
         """
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             members = sorted(zf.namelist())
@@ -1001,21 +1058,15 @@ class WestBengalConnector(StateConnector):
                 raise UnparseableRollError(
                     f"{ac.ac_code}: the downloaded ZIP holds no part PDFs"
                 )
-            layer = _text_layer(zf.read(members[0]))
-            if layer == LAYER_SCANNED:
+            if not _has_text_layer(zf.read(members[0])):
                 return self._parse_scanned(ac, roll_year, members)
-            if layer in (LAYER_PUA, LAYER_LATIN):
-                return self._parse_typeset(zf, members, ac, roll_year)
-            raise UnparseableRollError(
-                f"{ac.ac_code}: part PDFs are none of the three kinds this "
-                f"connector reads (got {layer!r})"
-            )
+            return self._parse_typeset(zf, members, ac, roll_year)
 
     def _parse_typeset(self, zf, members, ac, roll_year):
         """Every row of an AC whose PDFs have a text layer, Latin or PUA.
 
         Both cases run the same extraction; which one a *part* is is decided
-        inside _parse_part(), not here -- see _text_layer().
+        inside _parse_part(), not here -- see _has_text_layer().
 
         A part this connector cannot open does not end the build. Before this
         guard, pdfminer raising out of pdfplumber.open on one part of one AC
@@ -1162,17 +1213,19 @@ class WestBengalConnector(StateConnector):
                 rows, geometry = _page_rows(page, geometry, page_dropped)
                 if page_dropped:
                     dropped.append((part_no, page.page_number, sum(page_dropped)))
-                for cells in rows:
+                for cells, textless in rows:
                     records.append(
                         self._record(
-                            cells, ac, roll_year, part_no, member, bool(shreelipi)
+                            cells, ac, roll_year, part_no, member,
+                            bool(shreelipi), textless,
                         )
                     )
         for rec in records:
             rec.locality = locality or ""
         return records
 
-    def _record(self, cells, ac, roll_year, part_no, member, shreelipi=False):
+    def _record(self, cells, ac, roll_year, part_no, member, shreelipi=False,
+                textless=None):
         remarks = []
         name = cells[COL_NAME]
         rel_name = cells[COL_RELNAME]
@@ -1216,18 +1269,45 @@ class WestBengalConnector(StateConnector):
             remarks.append(f"unreadable EPIC no: {_describe(epic)}")
             epic = ""
 
+        serial_no = _parse_int(cells[COL_SL], "serial_no", remarks)
+        age = _parse_int(cells[COL_AGE], "age", remarks)
+
+        # Recover-and-declare, the twin of the refuse-and-declare above: a row
+        # is not emitted carrying a glyph we know we dropped without saying so.
+        # Checked against what is actually emitted, not against the raw cell --
+        # a field already blanked has its own remark, and two remarks for one
+        # cause is noise.
+        if textless:
+            emitted = {
+                COL_SL: "" if serial_no is None else str(serial_no),
+                COL_NAME: name,
+                COL_REL: relation,
+                COL_RELNAME: rel_name,
+                COL_SEX: gender,
+                COL_AGE: "" if age is None else str(age),
+                COL_EPIC: epic,
+            }
+            lost = [label for col, label in TEXTLESS_FIELDS
+                    if textless[col] and emitted[col].strip()]
+            if lost:
+                remarks.append(
+                    "glyph(s) the source font does not encode were dropped "
+                    "from: " + ", ".join(lost) + " -- the value is short a "
+                    "character and may not match exactly"
+                )
+
         return VoterRecord(
             state=self.state_id,
             district=ac.district,
             ac_code=ac.ac_code,
             ac_name=ac.ac_name,
             part_no=part_no,
-            serial_no=_parse_int(cells[COL_SL], "serial_no", remarks),
+            serial_no=serial_no,
             local_ref=epic,
             full_name=name,
             full_relative_name=rel_name,
             relation_code=relation,
-            age=_parse_int(cells[COL_AGE], "age", remarks),
+            age=age,
             gender=gender,
             roll_year=roll_year,
             remark="; ".join(remarks),
