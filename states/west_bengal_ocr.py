@@ -109,6 +109,18 @@ def _upside_down(page: dict) -> bool:
     reverse, and parse_row() then reads the EPIC as the serial, swallows the
     relation word's left side as the name, and finds no gender at all.
     Whole pages of AC294 read that way -- name 100%, relative's name 4%.
+
+    The fix repairs those rows; it does not add or remove any. Both versions
+    were run over the same cached responses for all 583 parts: 407,385 rows
+    before and 407,386 after, the one extra row being a single AC294 page,
+    and every one of the 559 parts with no inverted page byte-identical
+    across the two. That is worth stating because the failure this could
+    have had -- an elector who stops becoming a row -- is invisible
+    downstream: no search finds them, no quality suite misses them, and the
+    only trace is a coverage count quietly one lower. What does move is the
+    content of the rows on the 203 inverted pages: AC294 gains 6,918 rows
+    with a serial number and 7,213 with all of name, relative's name and
+    sex, against a row count flat to +1.
     """
     up = down = 0
     for block in page.get("blocks", []):
@@ -226,6 +238,27 @@ def group_rows(words: list[dict]) -> list[list[dict]]:
         AC287   96.1 / 97.4 / 82.5  ->  96.1 / 96.5 / 81.6
         AC291   73.4 / 64.2 / 61.3  ->  86.7 / 87.8 / 79.4
         AC294   52.0 / 37.9 / 39.5  ->  55.1 / 73.6 / 78.1
+
+    That table is the A/B for *this* function and nothing else. It is a
+    five-page-per-part sample taken before `_words` learned to turn an
+    upside-down page the right way up, and its left-hand column cannot be
+    re-measured, the grouper it describes having never reached a commit.
+    So read it for the direction and not for the level. AC294's 55.1 is the
+    one to distrust outright: 192 of that AC's 3,331 pages are upside down,
+    so more than a twentieth of what was being scored there was a page read
+    backwards, and the rotation fix has since taken the same column to 78.8
+    over the whole AC. Full-corpus recovery at this commit -- all 583 parts,
+    10,844 pages, not a sample -- is the figure to quote:
+
+        AC287   134,987 rows   sex 94.3 / EPIC 80.7 / serial 97.7
+        AC291   144,467 rows   sex 77.2 / EPIC 78.8 / serial 89.4
+        AC294   127,932 rows   sex 78.8 / EPIC 83.5 / serial 92.4
+
+    (Age is absent from that second table because at this commit it is
+    located and then discarded, so a recovery figure for it would describe
+    a value nothing keeps.) Name and relative's name are both 99.96% and
+    are left out for the same reason the sex column is worth watching --
+    they have never been where the loss is.
 
     AC287 is the least skewed of the three, which is why nothing looked
     wrong until AC294 was OCR'd; it is flat within noise either way. Its
