@@ -505,3 +505,20 @@ def test_a_word_never_begins_with_a_repha():
     ]:
         assert decode(_pua(pua_hex)) == (expected, []), expected
         assert not expected.startswith(sl.REPHA)
+
+
+def test_a_conjunct_drawn_as_one_glyph_holds_the_repha_too():
+    """A repha lands past the matra of a CONJUNCT, so it rides the cluster
+    behind it rather than the consonant ahead. That test only looked for a
+    conjunct stored as two buffer entries -- a half form plus the letter
+    completing it, hasant at the END of the first. The font also draws some
+    conjuncts as ONE glyph with its own table entry (gid 89 is ত্ত), where the
+    hasant is in the MIDDLE, and `.endswith()` could not see it.
+
+    AC006 part0063 page 2 prints the same surname typeset both ways, which is
+    why nothing caught this: the common spelling was already correct.
+    """
+    assert decode(_pua("2482c459d4826fc4bbc1")) == ("কীর্ত্তনীয়া", [])
+    # The same surname, matras typeset the other way round. The repha belongs
+    # on ত্ত here too; it used to seat on the ন after it (was কিত্তীর্নীয়া).
+    assert decode(_pua("c224825982c4d46fc4bbc1")) == ("কির্ত্তীনীয়া", [])

@@ -588,7 +588,17 @@ def decode(s):
                 k -= 1                          # back over trailing matras
             # A matra sits after the whole conjunct, so a repha clearing a
             # conjunct lands past the matra and rides the cluster behind it.
-            conjunct = (k >= 2 and out[k - 2].endswith(HASANT))
+            # Both spellings of "conjunct" have to be tested. Most are two
+            # entries -- a half form and the letter completing it, so the
+            # hasant is at the END of out[k-2]. But the font also draws some
+            # conjuncts as ONE glyph with its own table entry (gid 89 is ত্ত),
+            # and there the hasant is in the MIDDLE of out[k-1]. Testing only
+            # the two-entry spelling seated the repha on the consonant after
+            # the single-glyph conjunct instead of before it: কীর্ত্তনীয়া came
+            # out কিত্তীর্নীয়া, in a part where the same surname typeset the
+            # other way decoded correctly -- which is why no fixture caught it.
+            conjunct = ((k >= 1 and HASANT in out[k - 1])
+                        or (k >= 2 and out[k - 2].endswith(HASANT)))
             # A Bengali word cannot BEGIN with a repha -- it needs a consonant
             # in front of it to clear -- so an index of 0 is proof the seating
             # is wrong whatever the flag says, and the repha belongs ahead.
