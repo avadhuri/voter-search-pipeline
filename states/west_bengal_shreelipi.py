@@ -470,8 +470,14 @@ def _cluster_start(out, k):
     ব + ম(half) + ম + repha, and seating the repha immediately before the base
     ম gave বম্র্মন -- 1,261 of them in a six-AC sample, against a surname
     (Barman) that is the most common in the state.
+
+    A repha rides a below-base phala too, and a phala is stored as one element
+    STARTING with a hasant rather than ending with one, so the walk has to
+    recognise both spellings: দুর্য্যোধন is drawn দ ু ে য ্য া র্ ধ ন, and
+    stopping at the ্য seated the repha inside its own cluster (দুযর্্যোধন).
     """
-    while k > 0 and out[k - 1].endswith(HASANT):
+    while k > 0 and (out[k - 1].endswith(HASANT)
+                     or (k < len(out) and out[k].startswith(HASANT))):
         k -= 1
     return max(k, 0)
 

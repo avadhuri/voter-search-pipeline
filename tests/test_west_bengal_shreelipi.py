@@ -522,3 +522,13 @@ def test_a_conjunct_drawn_as_one_glyph_holds_the_repha_too():
     # The same surname, matras typeset the other way round. The repha belongs
     # on ত্ত here too; it used to seat on the ন after it (was কিত্তীর্নীয়া).
     assert decode(_pua("c224825982c4d46fc4bbc1")) == ("কির্ত্তীনীয়া", [])
+
+
+def test_a_repha_rides_a_below_base_phala_too():
+    """_cluster_start() walked back over elements ENDING in a hasant, which is
+    how a half form is stored. A below-base phala is stored the other way
+    round -- one element STARTING with a hasant -- so the walk stopped at it
+    and seated the repha inside the cluster it rides.
+    """
+    assert decode(_pua("65c6cd9899c1d46d6f")) == ("দুর্য্যোধন", [])   # AC061, was দুযর্্যোধন
+    assert decode(_pua("05765d9899c1d494c4")) == ("অন্তর্য্যামী", [])  # AC229, was অন্তযর্্যামী
