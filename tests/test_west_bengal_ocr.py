@@ -13,6 +13,8 @@ import os
 import pytest
 
 from states.west_bengal_ocr import (
+    MAX_ELECTOR_AGE,
+    MIN_ELECTOR_AGE,
     PAGES_MANIFEST,
     bengali_int,
     group_rows,
@@ -95,7 +97,7 @@ def test_rows_survive_column_major_reading_order():
     parsed = parse_page(_page(rows, column_order=True))
     assert [r["full_name"] for r in parsed] == ["রমেশ মণ্ডল", "সীতা মণ্ডল"]
     assert [r["serial_no"] for r in parsed] == [1, 2]
-    assert [r["age"] for r in parsed] == [None, None]
+    assert [r["age"] for r in parsed] == [35, 30]
     assert [r["gender"] for r in parsed] == ["M", "F"]
     assert [r["local_ref"] for r in parsed] == ["WBX1234567", "WBX1234568"]
 
@@ -122,11 +124,19 @@ def test_a_line_with_two_relation_words_is_rejected_rather_than_guessed():
 
 
 def test_a_latin_age_is_dropped_and_said_so_rather_than_stored():
-    # Vision transcribes ৪ as 8, so a Latin age may be off by decades. The
-    # year-of-birth filter is required, so a wrong age hides the elector from
-    # the person searching for them; an absent one does not.
+    # Arrival script is the whole test. A Latin-arriving digit is one Vision
+    # read the ink of correctly and then filed under the wrong numeral
+    # system -- 5.28% of Latin-arriving "8"s are really an 8 -- so the value
+    # is a plausible number that is not this elector's age. Year-of-birth is
+    # a *required* search field, so a decade-wrong age hides the elector from
+    # the person looking for them; an absent one is spared by the query.
     row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "40"])
     assert row["age"] is None
+    # The token itself goes into the remark, so what was thrown away stays
+    # countable -- reading the rejected column's distribution is how the
+    # 80s-versus-70s check was calibrated in the first place.
+    assert "age not read: Latin digits '40'" in row["remark"]
+    # Located either way, or it lands in a field the site searches.
     assert row["full_relative_name"] == "হরি মণ্ডল"
 
 
@@ -134,13 +144,13 @@ def test_a_bengali_age_outranks_a_stray_latin_fragment_beside_it():
     # Observed on the first part OCR'd: the column rule sheds a "2" to the
     # right of the age. Taking the rightmost number lost the real age.
     row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "৪৬", "2"])
-    assert row["age"] is None
+    assert row["age"] == 46
     assert row["full_relative_name"] == "হরি মণ্ডল"
 
 
 def test_a_trailing_fragment_after_the_age_stays_out_of_the_relative_s_name():
     row = parse_row(["১", "রমেশ", "মণ্ডল", "স্বামী", "হরি", "মণ্ডল", "স্ত্রী", "২২", "N"])
-    assert row["age"] is None
+    assert row["age"] == 22
     assert row["full_relative_name"] == "হরি মণ্ডল"
 
 
@@ -157,7 +167,7 @@ def test_a_missing_epic_leaves_the_row_searchable():
     row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫"])
     assert row["local_ref"] == ""
     assert row["full_name"] == "রমেশ মণ্ডল"
-    assert row["age"] is None
+    assert row["age"] == 35
     # Stated without a cause on purpose: a quarter of this roll's electors
     # genuinely have no EPIC, and a Vision response cannot tell an empty
     # cell from one it failed to read.
@@ -177,7 +187,7 @@ def test_a_missing_gender_is_left_empty_not_inferred_from_the_relation():
     # record about a named person.
     row = parse_row(["১", "সীতা", "মণ্ডল", "স্বামী", "রমেশ", "মণ্ডল", "৩০"])
     assert row["gender"] == ""
-    assert row["age"] is None
+    assert row["age"] == 30
     assert "sex not read" in row["remark"]
 
 
@@ -211,25 +221,62 @@ def test_a_row_that_read_cleanly_carries_no_remark():
     assert row["remark"] == ""
 
 
-def test_no_age_is_stored_from_a_scanned_roll_however_clean_it_reads():
-    # Not squeamishness about a hard column: the digit errors measured on
-    # this roll are visual (৩ read as 6, ৪ as 8), so they sit in the
-    # Bengali-read ages exactly as much as in the Latin-read ones that make
-    # them visible -- a serial-monotonicity check put Bengali-read tokens at
-    # 92.5% increasing and Latin-read at 89.7%, close enough that script is
-    # no evidence of correctness. Year-of-birth is a *required* search field,
-    # so a decade-wrong age is an elector nobody can find, while an absent
-    # one is spared by the query. Unknown, never "not your match".
+def test_a_bengali_age_in_range_is_stored():
+    """The policy this module carried until its evidence was rebuilt.
+
+    `d8bbc0c` stored no age at all, on a confusion matrix over 73 digit pairs
+    that put ৩->3 at 54% and a serial-monotonicity proxy that found Bengali-
+    read tokens 92.5% increasing against Latin-read at 89.7% -- close enough
+    to conclude the errors were visual and script was no evidence. The same
+    matrix rebuilt over 79,844 digit comparisons puts ৩->3 at 93.4%, and,
+    conditioned on arrival script, Bengali-arriving digits at 99.27-99.60%
+    against 5.28% for a Latin-arriving "8". Every dangerous substitution is
+    cross-script: true ৪ read as 8 happens 976 times in Latin and 0 times in
+    Bengali. See the module docstring.
+    """
     row = parse_row(
         ["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫", "WBA1234567"]
     )
-    assert row["age"] is None
-    # A blank age is uniform here, so it earns no remark of its own -- only
-    # an age token that could not be *found* does, since nothing got trimmed
-    # and the relative's name may carry the leftovers.
+    assert row["age"] == 35
     assert row["remark"] == ""
-    # The token is still located, or it would land in the relative's name.
     assert row["full_relative_name"] == "হরি মণ্ডল"
+
+
+def test_the_bounds_are_inclusive_at_both_ends():
+    for token, value in (("১৮", MIN_ELECTOR_AGE), ("১২০", MAX_ELECTOR_AGE)):
+        row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", token])
+        assert row["age"] == value, token
+
+
+def test_a_bengali_age_below_the_floor_is_refused_and_names_the_bound():
+    """The floor is not decoration -- it catches the one substitution that
+    survives within Bengali. ৯ reads as ১ at the tens position 30% of the
+    time, so a true 9X arrives as 1X, and 10..17 falls outside the window:
+    74% of observed decade errors are rejected here rather than stored."""
+    row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "১৪"])
+    assert row["age"] is None
+    assert "age not read: 14 outside 18..120" in row["remark"]
+    assert row["full_relative_name"] == "হরি মণ্ডল"
+
+
+def test_a_token_above_the_ceiling_is_refused():
+    # The ceiling does something different from the floor: it drops tokens
+    # that are not ages at all -- a column-rule fragment, a part number --
+    # 839 of 50,279 sampled rows.
+    row = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৪৫"])
+    assert row["age"] is None
+    assert "age not read: 345 outside 18..120" in row["remark"]
+
+
+def test_an_age_never_found_reads_differently_from_one_found_and_refused():
+    # Two different failures and both are worth counting. Nothing was
+    # trimmed in the first, so the leftovers may be sitting in a searched
+    # field; the second located its token and only rejected the value.
+    missing = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং"])
+    refused = parse_row(["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "40"])
+    assert "age not read" in missing["remark"]
+    assert "age not read: " not in missing["remark"]
+    assert "age not read: " in refused["remark"]
 
 
 SKEWED_ROW = ["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫", "WBA1234567"]

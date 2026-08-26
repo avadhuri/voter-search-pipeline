@@ -132,9 +132,10 @@ def _vision_page(rows):
     }]}}
 
 
-def _ocr_tree(root, ac_code, parts, ocr=None):
+def _ocr_tree(root, ac_code, parts, ocr=None, row=None):
     """The response tree scripts/ocr_vision.py writes. `ocr` names the parts
-    to actually write responses for; the rest stay un-OCR'd."""
+    to actually write responses for; the rest stay un-OCR'd. `row` overrides
+    the voter row every page carries."""
     ac_dir = os.path.join(root, ac_code)
     os.makedirs(ac_dir, exist_ok=True)
     with open(os.path.join(ac_dir, "pages.json"), "w", encoding="utf-8") as fh:
@@ -145,7 +146,7 @@ def _ocr_tree(root, ac_code, parts, ocr=None):
         pages = parts[stem]
         for first in range(1, pages + 1, 5):
             last = min(first + 4, pages)
-            payload = {"responses": [_vision_page([SCANNED_ROW])
+            payload = {"responses": [_vision_page([row or SCANNED_ROW])
                                      for _ in range(first, last + 1)]}
             with gzip.open(os.path.join(part_dir, f"p{first:04d}-{last:04d}.json.gz"),
                            "wt", encoding="utf-8") as fh:
@@ -230,12 +231,18 @@ def test_a_half_ocrd_ac_is_refused_rather_than_built_short(tmp_path):
     assert "2 of 3" in message
 
 
-def test_a_scan_carries_no_age_and_no_locality(tmp_path):
-    """Both are deliberate blanks, not extraction failures. The age is
-    located and discarded (states/west_bengal_ocr.py's docstring has the
-    digit-confusion measurements); the locality is printed on a cover page
-    that is itself an image, and an unread cell is left empty here rather
-    than inferred.
+def test_a_scan_carries_an_age_it_can_vouch_for_and_no_locality(tmp_path):
+    """The age reaches the record; the locality is a deliberate blank.
+
+    A scanned AC stored no age at all until the confusion matrix behind that
+    decision was rebuilt at corpus scale -- see states/west_bengal_ocr.py's
+    docstring. It now stores one when the token arrived entirely in Bengali
+    numerals and lands in range, and leaves it NULL otherwise, which the
+    serving app's required year-of-birth filter spares rather than hides.
+    This is the wiring check: the value survives the connector, not just
+    parse_row. The locality is a separate matter -- it is printed on a cover
+    page that is itself an image, and an unread cell is left empty here
+    rather than inferred.
     """
     root = str(tmp_path / "ocr")
     _ocr_tree(root, "AC287", {"part0001": 2})
@@ -243,10 +250,29 @@ def test_a_scan_carries_no_age_and_no_locality(tmp_path):
 
     records = WestBengalConnector(ocr_dir=root).parse_raw(raw, SCANNED_AC, 2002)
     assert records
-    assert all(r.age is None for r in records)
+    assert all(r.age == 35 for r in records)
     assert all(r.locality == "" for r in records)
-    # The age was still *found*, or it would be sitting in the searched
-    # relative-name field.
+    # The age is trimmed off whether or not its value survives, or it sits
+    # in the searched relative-name field.
+    assert all(r.full_relative_name == "হরি মণ্ডল" for r in records)
+
+
+def test_a_scan_leaves_an_age_it_cannot_vouch_for_null(tmp_path):
+    """Same wiring, the other direction. A Latin-arriving age token is one
+    Vision read the ink of correctly and filed under the wrong numeral
+    system, so the value is a plausible number that is not this elector's
+    age -- and a decade-wrong age in a required filter is an elector nobody
+    can find, where an absent one is spared."""
+    root = str(tmp_path / "ocr")
+    latin_age = ["১", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "35",
+                 "WBA1234567"]
+    _ocr_tree(root, "AC287", {"part0001": 2}, row=latin_age)
+    raw = _scan_zip({"part0001": 2})
+
+    records = WestBengalConnector(ocr_dir=root).parse_raw(raw, SCANNED_AC, 2002)
+    assert records
+    assert all(r.age is None for r in records)
+    assert all("age not read: Latin digits" in r.remark for r in records)
     assert all(r.full_relative_name == "হরি মণ্ডল" for r in records)
 
 
