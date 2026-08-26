@@ -108,3 +108,61 @@ def test_an_ac_with_no_ocr_output_is_an_error_not_an_empty_report(tmp_path):
     _corpus(tmp_path, ["part0001"])
     with pytest.raises(SystemExit):
         figures.main(["--raw-dir", str(tmp_path), "--acs", "AC291"])
+
+
+def _report_text(tmp_path, capsys, rows=None):
+    rows = rows if rows is not None else [_row()]
+    ocr = _corpus(tmp_path, ["part0001"])
+    total, per_ac, worst = figures.measure(
+        _Connector({"part0001": rows}), ocr, ["AC287"], 5)
+    figures.report("test", total, per_ac, worst, ["AC287"])
+    return capsys.readouterr().out
+
+
+def test_every_percentage_is_labelled_coverage_not_quality(tmp_path, capsys):
+    """The defect this script was written after was a presence figure sitting
+    where a correctness figure was expected. Printing the numbers correctly
+    does not fix that -- saying which kind they are does."""
+    out = _report_text(tmp_path, capsys)
+
+    assert "`coverage:`" in out
+    assert "not that it was read correctly" in out
+
+
+def test_a_metric_with_no_accuracy_measurement_says_so_rather_than_omitting_it(
+        tmp_path, capsys):
+    """An absent line reads as "fine". None of the four columns has an
+    accuracy measurement, so all four must say so out loud -- the same
+    direction as the connector defaulting to NAME_UNREAD."""
+    out = _report_text(tmp_path, capsys)
+
+    for column, _ in figures.COVERAGE:
+        assert f"accuracy: {column:<8} not measured" in out, column
+
+
+def test_registering_a_measurement_is_what_changes_the_line(tmp_path, capsys,
+                                                            monkeypatch):
+    """The `not measured` text is derived from ACCURACY being empty, not
+    typed into a print. Otherwise the line goes stale the day somebody
+    measures one of these and forgets the string."""
+    monkeypatch.setitem(figures.ACCURACY, "serial", lambda: 91.5)
+    out = _report_text(tmp_path, capsys)
+
+    assert "accuracy: serial   91.50%" in out
+    assert "accuracy: serial   not measured" not in out
+    assert "accuracy: age      not measured" in out
+
+
+def test_a_caveat_is_printed_beside_not_measured_never_instead_of_it(
+        tmp_path, capsys):
+    """What is known about serial accuracy without measuring it -- the 9.0%
+    collision floor -- is a caveat. A caveat that displaced the words
+    `not measured` would read as the measurement."""
+    lines = _report_text(tmp_path, capsys).splitlines()
+    start = next(i for i, l in enumerate(lines) if "accuracy: serial" in l)
+    rest = lines[start + 1:]
+    block = rest[:next((i for i, l in enumerate(rest) if "accuracy:" in l),
+                       len(rest))]
+
+    assert "not measured" in lines[start]
+    assert "9.0%" in " ".join(block)

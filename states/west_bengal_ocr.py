@@ -116,9 +116,28 @@ too. But it cannot be the main cause: **63.9% of colliding rows arrived in
 Bengali**, and a second mechanism is unidentified. Worth noticing that the
 matrix below was built over 38,896 *serial* tokens and then used to set the
 *age* rule -- a Latin-arriving age is dropped, a Latin-arriving serial is
-kept with a remark. That asymmetry may well be right (a wrong age moves an
-elector out of reach of a required search field, a wrong serial does not),
-but it was never argued, and the collision figure is what it costs.
+kept with a remark.
+
+**The rule behind that asymmetry: drop a value that can silently exclude,
+keep and mark a value that can only mislead.** Age is a filter and the
+filter is required, so a wrong age moves an elector outside the birth-year
+window and returns them nothing at all -- they are told, in effect, that
+they were never on this roll, and no query recovers from it. A serial is
+display only: a wrong one reaches somebody who has *already* found their
+row by name, and sends them to the wrong line of the printed roll while
+they still hold the name, part, AC and relative to correct against. Bad,
+and recoverable by the person it happens to. So the asymmetry is not an
+artefact of which measurement happened to come first, and it generalises to
+any column this connector grows later.
+
+What keeping the serial obliges, and the collision figure is what it costs:
+a serial *displayed* as authoritative when 9.0% of them are known wrong is
+the same presence-read-as-correctness defect moved into the UI. Keeping the
+value is only defensible while the remark qualifying it travels with it --
+per field and machine-distinguishable, so a display layer can mark that one
+cell rather than print pipeline prose beside the row. Today that holds by
+prefix convention alone (`serial no read as Latin digits ...`), which is
+not the same as being guaranteed.
 
 **The remaining 6.6% is scan quality, not a parser defect** -- measured
 rather than assumed, and recorded so nobody spends a week on it. Of the rows
@@ -522,18 +541,27 @@ def group_rows(words: list[dict]) -> list[list[dict]]:
     one to distrust outright: 192 of that AC's 3,331 pages are upside down,
     so more than a twentieth of what was being scored there was a page read
     backwards, and the rotation fix has since taken the same column to 78.8
-    over the whole AC. Full-corpus recovery at this commit -- all 583 parts,
-    10,844 pages, not a sample -- is the figure to quote:
+    over the whole AC. Full-corpus coverage at that commit -- all 583 parts,
+    10,844 pages, not a sample:
 
         AC287   134,987 rows   sex 94.3 / EPIC 80.7 / serial 97.7
         AC291   144,467 rows   sex 77.2 / EPIC 78.8 / serial 89.4
         AC294   127,932 rows   sex 78.8 / EPIC 83.5 / serial 92.4
 
-    (Age is absent from that second table because at this commit it is
-    located and then discarded, so a recovery figure for it would describe
-    a value nothing keeps.) Name and relative's name are both 99.96% and
-    are left out for the same reason the sex column is worth watching --
-    they have never been where the loss is.
+    Every number in that table is `coverage:` -- the cell was read, not read
+    right -- and it is a **snapshot of that commit, not the figure to quote**,
+    which is what it used to call itself. The row counts have since moved
+    (135,075 / 144,795 / 128,243) because this module stopped refusing 727
+    rows, and a coverage figure moves whenever the denominator does. Run
+    `make wb-ocr-figures` for the live numbers; this table is kept only
+    because the paragraph above it argues from the *direction* between the
+    two tables, which needs both ends preserved.
+
+    (Age is absent from it because at that commit an age is located and then
+    discarded, so a coverage figure for it would describe a value nothing
+    keeps.) Name and relative's name are both 99.96% *present* and are left
+    out for the same reason the sex column is worth watching -- they have
+    never been where the loss is.
 
     AC287 is the least skewed of the three, which is why nothing looked
     wrong until AC294 was OCR'd; it is flat within noise either way. Its

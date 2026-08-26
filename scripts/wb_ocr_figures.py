@@ -33,6 +33,7 @@ import json
 import os
 import re
 import sys
+import textwrap
 
 AC_DIR = re.compile(r"^AC\d+$")
 
@@ -41,6 +42,43 @@ AC_DIR = re.compile(r"^AC\d+$")
 # which predates the age rule; the table is the thing that is stale, not this.
 COVERAGE = (("sex", "gender"), ("EPIC", "local_ref"), ("serial", "serial_no"),
             ("age", "age"))
+
+# Every percentage this script prints carries its kind, and the kinds are not
+# interchangeable:
+#
+#   coverage:  the share of rows where the cell was read at all
+#   accuracy:  the share of rows where the cell was read *right*
+#
+# A reader shown one number under a heading like "serial recovery 93.37%",
+# directly above a per-digit accuracy matrix, will take it for the second. It
+# is the first. That is not a hypothetical misreading -- it happened in this
+# module's own docstring, and it happened in a second connector on the same
+# day, both times while the figure was being used to scope somebody else's
+# work.
+#
+# So a metric with no accuracy measurement prints `accuracy: not measured`
+# rather than printing nothing. An absent line reads as "fine"; an explicit
+# "not measured" reads as a gap, which is what it is. This is the same
+# direction as the connector's NAME_UNREAD default -- silence must not buy a
+# figure the benefit of the doubt.
+#
+# ACCURACY maps a coverage metric to the function that measures whether the
+# cell was read correctly. It is empty, and empty is the honest state: not one
+# of these four has an accuracy measurement over the corpus. Adding an entry
+# is what changes the printed line -- nobody has to remember to edit a string.
+ACCURACY: dict[str, object] = {}
+
+# What is known about a metric's accuracy without measuring it. A caveat is
+# not a measurement and never substitutes for one -- it prints beside
+# `not measured`, never instead of it.
+ACCURACY_CAVEATS = {
+    "serial": ("at least 9.0% of rows hold a serial another row in the same "
+               "part also holds, so at least one of each pair is wrong. That "
+               "floor is loose: a collision is the weakest of the three "
+               "checks a part's own 1..N numbering supports, and it is blind "
+               "to every misread that leaves the range. A wider measurement "
+               "exists and lands with its detector in the serial PR"),
+}
 
 # The three ways a row reaches the corpus that would have been refused
 # outright before the refused-rows change, each identifiable from the parsed
@@ -106,6 +144,26 @@ def pct(n, d):
     return f"{100.0 * n / d:.2f}%" if d else "n/a"
 
 
+def _report_kinds():
+    """Say what kind of figure each column is, and name the missing half.
+
+    Printed unconditionally. The whole point is that the accuracy lines
+    appear when there is nothing to report, so their absence can never be
+    mistaken for their being fine.
+    """
+    print("  kind: every percentage above is `coverage:` -- the cell was read,")
+    print("        not that it was read correctly. The two are different")
+    print("        questions and only one of them is answered here.")
+    for col, _ in COVERAGE:
+        measured = ACCURACY.get(col)
+        value = f"{measured():.2f}%" if measured else "not measured"
+        print(f"    accuracy: {col:<8} {value}")
+        caveat = ACCURACY_CAVEATS.get(col)
+        if caveat:
+            for line in textwrap.wrap(caveat, 62):
+                print(f"    {'':<10}{'':<8} {line}")
+
+
 def report(label, total, per_ac, worst, acs):
     print(f"--- {label}")
     if not total["rows"]:
@@ -134,6 +192,7 @@ def report(label, total, per_ac, worst, acs):
               f"{classes - total['recovered']} row(s) being in two of them)")
     if total["serial zero"]:
         print(f"  serials read as 0, counted above as read: {total['serial zero']}")
+    _report_kinds()
     if worst:
         print("  worst parts by blank name:")
         for rate, name, blank, rows in worst:
