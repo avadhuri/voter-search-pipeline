@@ -39,12 +39,26 @@ vendor family, Modular Infotech):
   1. A pre-base matra (ি ে ৈ) is drawn to the LEFT of the cluster it follows,
      so it must be buffered and released once the cluster is complete --
      including any below-base phala, or শ + ্র + ে decodes as শে্র.
-  2. A repha is drawn AFTER the glyph it clears. That glyph is the consonant
-     it rides when one is directly behind it, but is the matra when the
-     cluster already carries one -- and there the repha usually belongs to the
-     consonant still to come, EXCEPT when the cluster behind the matra is
-     itself a conjunct, which the matra sits after (see the repha branch of
-     decode(): কার্তিক and সর্ব্বানন্দ are the same glyph shape either way).
+  2. A repha is drawn AFTER the glyph it clears, so seating it means asking
+     what the font drew IMMEDIATELY BEFORE it. That is a question about the
+     glyph STREAM, and it cannot be answered from the tail of the buffer this
+     module is emitting into: a hook, a joiner or a stem consumes a glyph
+     without appending anything, and several glyphs append two entries. So
+     decode() carries `prev_glyph_was_matra`, set once per glyph for every
+     branch. Reading the buffer tail instead put the repha one cluster too far
+     forward in every name where a matra preceded it -- কার্তিক came out
+     কাতির্ক, পূর্ণিমা পূণির্মা, উর্মিলা উমির্লা, মর্জিনা মজির্না, ধর্মেন্দ্র
+     ধমের্ন্দ্র.
+
+     Given that flag the rule is: no matra behind it, the repha rides the
+     consonant directly behind. A matra behind it, and the repha belongs to
+     the consonant still to COME -- because the matra sits after its own
+     cluster, so the repha drawn after the matra has already cleared it
+     (নির্বাচক). EXCEPT when the cluster behind that matra is a CONJUNCT: a
+     conjunct's matra sits after the whole conjunct, so a repha clearing it
+     lands past the matra and rides the cluster behind after all
+     (সর্ব্বানন্দ, দুর্ব্বলা, কীর্ত্তনীয়া). Both spellings of "conjunct" have
+     to be tested -- see the repha branch of decode().
   3. A consonant may be drawn as a HALF form, completed either by a bare
      vertical stem glyph or by the next consonant in a conjunct -- or marked
      as one retroactively, by a joiner glyph drawn after the letter it applies
@@ -497,6 +511,7 @@ def decode(s):
     """
     out, pending, held, unknown = [], [], [], []
     half = False
+    prev_glyph_was_matra = False
     i, n = 0, len(s)
 
     while i < n:
@@ -554,23 +569,40 @@ def decode(s):
                     break
 
         elif gid in REPHA_GIDS:
-            if out and _is_mark(out[-1]):
-                # A repha drawn after a matra rides either the consonant ahead
-                # (কার্তিক is ক া র্ ত ি) or the cluster the matra itself
-                # belongs to. The two are indistinguishable from glyph order
-                # alone, so the tiebreak is whether that cluster is a conjunct:
-                # a matra sits after the whole conjunct, so the repha clearing
-                # it lands past the matra. সর্ব্বানন্দ is স ব্ব া র্ ন ন দ, and
-                # reading that repha as riding the ন gave সব্বার্ননদ.
-                k = len(out)
-                while k > 0 and _is_mark(out[k - 1]):
-                    k -= 1                      # back over trailing matras
-                if k >= 2 and out[k - 2].endswith(HASANT):
-                    out.insert(_cluster_start(out, k - 1), REPHA)
-                else:
-                    held.append(REPHA)          # belongs to the consonant ahead
+            # A repha drawn after a matra rides either the consonant ahead
+            # (কার্তিক is ক া র্ ত ি) or the cluster the matra itself belongs
+            # to. সর্ব্বানন্দ is স ব্ব া র্ ন ন দ, and reading that repha as
+            # riding the ন gave সব্বার্ননদ.
+            #
+            # The question is which glyph the font drew IMMEDIATELY BEFORE the
+            # repha, and `out[-1]` cannot answer it: a pre-base matra is drawn
+            # to the left of its cluster but flushed into `out` AFTER the base
+            # consonant, so `out[-1]` is a mark exactly when the previous glyph
+            # in the stream was that consonant -- the one case where "rides the
+            # consonant ahead" is wrong. Testing the buffer instead of the
+            # stream mis-seated the repha on every cluster carrying a pre-base
+            # matra: কার্তিক came out কাতির্ক, পূর্ণিমা পূণির্মা, উর্মিলা
+            # উমির্লা, মর্জিনা মজির্না, ধর্মেন্দ্র ধমের্ন্দ্র.
+            k = len(out)
+            while k > 0 and _is_mark(out[k - 1]):
+                k -= 1                          # back over trailing matras
+            # A matra sits after the whole conjunct, so a repha clearing a
+            # conjunct lands past the matra and rides the cluster behind it.
+            conjunct = (k >= 2 and out[k - 2].endswith(HASANT))
+            # A Bengali word cannot BEGIN with a repha -- it needs a consonant
+            # in front of it to clear -- so an index of 0 is proof the seating
+            # is wrong whatever the flag says, and the repha belongs ahead.
+            # This is what separates the corpus's two typesettings of the same
+            # cluster: কার্ত্তিক is drawn ক া ি ত্ত র্ in one part and
+            # ক া ি র্ ত্ত in another, and only the second lands at 0.
+            # It recovers নির্মল, নির্মলা, বর্ণালী, ঝর্ণারানী and কার্ত্তিক,
+            # every one of which the stream rule alone spelled with the repha
+            # in front of the word.
+            at = _cluster_start(out, max(k - 1, 0))
+            if (prev_glyph_was_matra and not conjunct) or at == 0:
+                held.append(REPHA)              # belongs to the consonant ahead
             else:
-                out.insert(_cluster_start(out, len(out) - 1), REPHA)
+                out.insert(at, REPHA)
 
         elif gid in PREBASE_GIDS:
             pending.append(PREBASE_GIDS[gid])
@@ -609,6 +641,17 @@ def decode(s):
 
         else:
             unknown.append(gid)
+
+        # Set once, for every branch, so it means what the repha branch above
+        # reads it as: "the glyph the font drew immediately before this one was
+        # a post-base matra" -- a pre-base one is buffered in `pending` and
+        # belongs to the cluster still to come, so it is deliberately not one.
+        # Setting this inside the GID_MAP branch alone left it stale whenever a
+        # hook, a joiner or a stem came between the matra and the repha: the
+        # flag then still said "matra" about a glyph two or three positions
+        # back. IGNORE_GIDS `continue` above and so stay transparent, which is
+        # what they are.
+        prev_glyph_was_matra = gid in GID_MAP and _is_mark(GID_MAP[gid])
 
     out.extend(pending)
     _flush_held(out, held)

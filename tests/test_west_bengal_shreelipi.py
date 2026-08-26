@@ -465,3 +465,43 @@ def test_the_ai_matra_is_not_the_e_matra():
     assert sl.PREBASE_GIDS[206] == "ৈ"
     assert decode(_pua("cea6cd9b7b")) == ("শৈলেন্দ্র", [])          # AC135, was শেলেন্দ্র
     assert decode(_pua("ce856599")) == ("বৈদ্য", [])                # AC164, was বেদ্য
+
+
+def test_a_repha_after_a_matra_seats_on_the_letter_it_cleared():
+    """The repha branch used to decide from the tail of the buffer it was
+    emitting into rather than from the glyph the font actually drew before the
+    repha. A hook, a joiner or a stem consumes a glyph without appending
+    anything, so the buffer tail could be a matra two or three glyphs back --
+    and the repha then rode the wrong cluster.
+
+    These are locked BY NAME, not by "the repha seats correctly": a later
+    refactor can satisfy a structural assertion and still spell Kartik
+    কাতির্ক. Every glyph run below is a real token lifted from the AC named
+    beside it, and the `was` is what the table emitted for those same bytes
+    before the fix.
+    """
+    assert decode(_pua("2482c1c257d4822482")) == ("কার্তিক", [])   # AC126, was কাতির্ক
+    assert decode(_pua("94c23fd46fc1")) == ("মর্জিনা", [])          # AC034, was মজির্না
+
+
+def test_a_word_never_begins_with_a_repha():
+    """A repha needs a consonant in front of it to clear, so a Bengali word
+    cannot begin with one: an insertion index of 0 is proof the seating is
+    wrong whatever the stream said, and the repha belongs to the consonant
+    ahead instead.
+
+    This is what separates the corpus's two typesettings of the same cluster.
+    কার্ত্তিক is drawn ক া ি ত্ত র্ in one part and ক া ি র্ ত্ত in another;
+    only the second lands at 0. Without the check the second spelling came out
+    র্কাত্তিক -- and নির্মল, one of the commonest names in the state, came out
+    র্নিমল.
+    """
+    for pua_hex, expected in [
+        ("c26fd4949b", "নির্মল"),          # AC001
+        ("c26fd4949bc1", "নির্মলা"),        # AC205
+        ("2482c1c2d459822482", "কার্ত্তিক"),  # AC088
+        ("85d452c19bc4", "বর্ণালী"),        # AC118
+        ("46d48252c19ac16fc4", "ঝর্ণারানী"),  # AC202
+    ]:
+        assert decode(_pua(pua_hex)) == (expected, []), expected
+        assert not expected.startswith(sl.REPHA)
