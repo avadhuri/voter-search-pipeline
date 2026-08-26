@@ -75,11 +75,13 @@ import glob
 import os
 import sqlite3
 import sys
+import unicodedata
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from states.base import UnparseableRollError
+from states.base import (NAME_ABSENT_IN_SOURCE, NAME_UNREAD,
+                         UnparseableRollError)
 from states.registry import STATE_CONNECTORS
 from states.roll_years import resolve_roll_year, roll_year_for
 from states.source_urls import resolve_source_url
@@ -370,6 +372,213 @@ def _report_backfill(result, prefix=""):
         )
 
 
+# --- The per-part nameless-name alarm ------------------------------------
+#
+# A part of a roll whose name column is mostly missing is an extraction
+# failure, not a property of the roll, and nothing else in this pipeline can
+# see it. Row counts stay right, the catalog stays consistent, the serving
+# app's freshness guards see nothing stale, and voter_search_engine's
+# search-quality suite drives explicit (state, ac_code) pairs so it never
+# asks a question a nameless part could answer wrongly. Meanwhile the rows
+# are counted in ac_index.row_count and therefore in the coverage figure the
+# site publishes -- the same class as the acs_digitized incident, where the
+# data was fine and the claim about how much of it there was, was not.
+#
+# Two real cases. Haryana HR22 parts 52 and 153, where 936 of part 52's
+# 1,115 rows have no name -- found after the fact, by nothing. And West
+# Bengal's Darjeeling constituencies, where AC025's first 37 parts and
+# AC026's first 8 are Devanagari rather than Shree-Lipi Bengali and the
+# connector correctly refuses to run them through the wrong glyph table
+# (see looks_like_shreelipi's docstring, which names those exact counts).
+# That second one is the more instructive of the two: the connector is
+# behaving correctly and the gap is written down, and 34,347 rows are
+# still nameless, still served, and still counted as digitized. An alarm
+# is worth having for a known gap and not only for a bug -- "we decided
+# not to guess here" and "we quietly lost these" are the same shape from
+# the outside, and neither should have to be remembered.
+
+# A part must be at least this fraction nameless, AND hold at least this
+# many nameless rows, before it is called out.
+#
+# Honest statement of what calibrates these: nothing in the band does. Across
+# the 106 built West Bengal Shree-Lipi AC files -- 22,941 parts, 17,254,095
+# rows -- every part that trips is at exactly 100.0% and every part that does
+# not is under 0.02%; 5% and 50% select the identical 45 parts. Haryana HR22
+# part 52 sits at 84%, and the worst part of the West Bengal OCR corpus that
+# is *not* a defect sits at 1.56%. So the measured claim is "the band is
+# empty in every corpus we have looked at", which is a reason to believe a
+# threshold anywhere in it behaves the same, and is not evidence that 10% is
+# the right number. _report_nameless prints the rate of every tripping part
+# for that reason: if the band ever fills, the report is where it shows up
+# first, rather than in a threshold quietly moved to make a build quiet.
+NAMELESS_PART_RATE = 0.10
+# The minimum count is what stops a small part from tripping on noise: at 449
+# rows, 7 nameless is 1.6%, but the same 7 in a 60-row part is 12%. On the
+# corpus above it excludes exactly one part -- AC047/part0109, 1 nameless row
+# of 1 -- which is precisely what it is for.
+NAMELESS_PART_MIN_COUNT = 20
+
+
+def _is_usable_name(value):
+    """True if `value` holds at least one letter, in any script.
+
+    Blankness is the obvious way a name can be missing and not the only one.
+    West Bengal has 30 rows across 13 ACs whose name is the literal
+    'ঃঃ' -- punctuation that occupies the cell, passes a non-empty
+    test, passes a length test, and is findable by nobody (vsp #35). Testing
+    for a letter rather than for emptiness costs nothing and catches both,
+    and stays script-general instead of encoding a rule about Bengali.
+    """
+    return any(unicodedata.category(ch).startswith("L") for ch in value or "")
+
+
+def _classify_name(record):
+    """Return "" for a record with a usable name, else why it has none.
+
+    The alarm's whole discriminator lives in this function, so it is worth
+    stating what it is *not*. It is not "did the connector explain itself":
+    both known cases explain themselves accurately and are still defects.
+    Haryana appends "no voter name in row"; West Bengal AC025 appends "name
+    in an unrecognized Bengali-script font: no glyph table for it". Those are
+    true, specific, and exactly the rows that need chasing -- a remark that
+    restates the symptom is not a licence, and no test on remark text can
+    tell the two apart.
+
+    What separates them is whether the name exists to be recovered:
+    NAME_ABSENT_IN_SOURCE is a fact about the roll, NAME_UNREAD is a fact
+    about us. An undeclared blank is NAME_UNREAD, so a connector saying
+    nothing cannot buy silence.
+    """
+    if _is_usable_name(record.full_name):
+        return ""
+    declared = getattr(record, "name_absence", "") or ""
+    if declared in (NAME_ABSENT_IN_SOURCE, NAME_UNREAD):
+        return declared
+    return NAME_UNREAD
+
+
+def _nameless_census(records):
+    """Count rows, unread names and source-blank names per part.
+
+    Returns {part_no: {"rows": n, NAME_UNREAD: n, NAME_ABSENT_IN_SOURCE: n}},
+    plus an "unrecognized" Counter of any name_absence value that was
+    neither constant -- counted as unread and reported rather than dropped,
+    since a typo in a connector would otherwise silently disarm the alarm for
+    exactly the rows it was aimed at.
+    """
+    parts = {}
+    undeclared = collections.Counter()
+    for rec in records:
+        part = parts.setdefault(
+            rec.part_no,
+            {"rows": 0, NAME_UNREAD: 0, NAME_ABSENT_IN_SOURCE: 0},
+        )
+        part["rows"] += 1
+        why = _classify_name(rec)
+        if why:
+            part[why] += 1
+            declared = getattr(rec, "name_absence", "") or ""
+            if declared and declared not in (NAME_ABSENT_IN_SOURCE, NAME_UNREAD):
+                undeclared[declared] += 1
+    return {"parts": parts, "unrecognized": undeclared, "reparsed": True}
+
+
+def _nameless_census_from_db(conn):
+    """The same census read back from an already-built per-AC file.
+
+    Needed because a --per-ac run skips every AC a previous run finished, so
+    without this the alarm would report on a full build and go quiet on every
+    re-run after it -- which is when anyone actually reads the output. The
+    file does not carry name_absence (adding a column would be a `contract`
+    bump and a rebuild of every published AC, which this is not worth), so
+    every nameless row here is counted as unread. That over-counts once a
+    connector starts declaring NAME_ABSENT_IN_SOURCE, which is the safe
+    direction for an alarm and is stated in the report rather than left for a
+    reader to infer from a number that quietly means something else.
+    """
+    parts = {}
+    for part_no, name in conn.execute("SELECT part_no, full_name FROM voters"):
+        part = parts.setdefault(
+            part_no, {"rows": 0, NAME_UNREAD: 0, NAME_ABSENT_IN_SOURCE: 0})
+        part["rows"] += 1
+        if not _is_usable_name(name):
+            part[NAME_UNREAD] += 1
+    return {"parts": parts, "unrecognized": collections.Counter(),
+            "reparsed": False}
+
+
+def _nameless_alarms(census):
+    """Every part of one AC's census that is over both bars, worst first."""
+    alarms = []
+    for part_no, counts in census["parts"].items():
+        unread = counts[NAME_UNREAD]
+        rows = counts["rows"]
+        if not rows or unread < NAMELESS_PART_MIN_COUNT:
+            continue
+        rate = unread / rows
+        if rate >= NAMELESS_PART_RATE:
+            alarms.append((part_no, unread, rows, rate))
+    return sorted(alarms, key=lambda a: (-a[3], -a[1], a[0]))
+
+
+def _report_nameless(results, prefix=""):
+    """Print the state's nameless-name picture: the alarm, then the totals.
+
+    Prints nothing at all when there is nothing to say -- no alarm, no
+    source-blank rows, no unrecognized declaration -- so a clean state stays
+    a clean line of output. It does *not* print a reassuring "0 parts" line,
+    because a build that skipped every AC would otherwise print one while
+    having checked nothing.
+    """
+    alarms = []
+    unread = blank_in_source = rows = 0
+    unrecognized = collections.Counter()
+    inferred_acs = []
+    for result in results:
+        census = result.get("nameless")
+        if census is None:
+            continue
+        if not census["reparsed"]:
+            inferred_acs.append(result["ac_code"])
+        unrecognized.update(census["unrecognized"])
+        for counts in census["parts"].values():
+            rows += counts["rows"]
+            unread += counts[NAME_UNREAD]
+            blank_in_source += counts[NAME_ABSENT_IN_SOURCE]
+        for part_no, n, part_rows, rate in _nameless_alarms(census):
+            alarms.append((rate, n, part_rows, result["ac_code"], part_no))
+
+    if not (alarms or blank_in_source or unrecognized):
+        return
+
+    if alarms:
+        alarms.sort(key=lambda a: (-a[0], -a[1]))
+        affected = sum(a[1] for a in alarms)
+        print(f"{prefix}WARNING: {len(alarms)} part(s) are at least "
+              f"{NAMELESS_PART_RATE:.0%} unread names, {affected:,} row(s) in "
+              f"total. These rows are counted in row_count and in the coverage "
+              f"figure the site publishes, and are findable by nobody.")
+        for rate, n, part_rows, ac_code, part_no in alarms[:10]:
+            print(f"{prefix}    {ac_code} part {part_no}: {n:,}/{part_rows:,} "
+                  f"= {rate:.1%} unread")
+        if len(alarms) > 10:
+            print(f"{prefix}    ... and {len(alarms) - 10} more part(s)")
+    if blank_in_source:
+        print(f"{prefix}{blank_in_source:,} row(s) of {rows:,} declare no name "
+              f"in the source itself; not counted toward the alarm.")
+    for value, n in sorted(unrecognized.items()):
+        print(f"{prefix}WARNING: {n:,} row(s) set name_absence={value!r}, which "
+              f"is neither {NAME_ABSENT_IN_SOURCE!r} nor {NAME_UNREAD!r}. "
+              f"Counted as unread. Fix the connector or add the value.")
+    if inferred_acs:
+        print(f"{prefix}Note: {len(inferred_acs)} AC(s) were skipped as already "
+              f"built, so their counts were read back from the built file, "
+              f"which does not carry name_absence -- every nameless row in "
+              f"them is counted as unread. Rebuild them to tell the two "
+              f"apart: {', '.join(sorted(inferred_acs)[:8])}"
+              + (" ..." if len(inferred_acs) > 8 else ""))
+
+
 def _finalize(conn):
     conn.executescript(
         """
@@ -427,6 +636,7 @@ def build_single(raw_path, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
     backfill_latin_columns(conn)
     _finalize(conn)
 
+    _report_nameless([{"ac_code": ac_code, "nameless": _nameless_census(records)}])
     total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
     print(f"Loaded {total} records from {ac_code} into {db_path}.")
     conn.close()
@@ -456,6 +666,7 @@ def build_combined(raw_dir, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
     raw_glob = STATE_CONNECTORS[state_id]["raw_glob"]
     csv_paths = sorted(glob.glob(os.path.join(raw_dir, raw_glob)))
     total = 0
+    nameless_results = []
     for path in csv_paths:
         ac_code = os.path.splitext(os.path.basename(path))[0]
         ac = _resolve_ac(ac_code, ac_lookup, state_id)
@@ -463,11 +674,14 @@ def build_combined(raw_dir, db_path, roll_year=None, state_id=DEFAULT_STATE_ID):
             raw = f.read()
         records = connector.parse_raw(raw, ac, roll_year)
         conn.executemany(INSERT_SQL, _records_to_rows(records))
+        nameless_results.append(
+            {"ac_code": ac_code, "nameless": _nameless_census(records)})
         total += len(records)
         print(f"  {ac_code}: {len(records)} records")
 
     backfill_latin_columns(conn)
     _finalize(conn)
+    _report_nameless(nameless_results)
     grand_total = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
     print(f"Loaded {grand_total} records from {len(csv_paths)} ACs into {db_path}.")
     conn.close()
@@ -543,6 +757,7 @@ def build_multi_state(state_ids, db_path, roll_year=None, ac_codes=None):
         state_total = 0
         acs_with_locality = set()
         unparseable = []
+        nameless_results = []
         for path in paths:
             ac_code = os.path.splitext(os.path.basename(path))[0]
             ac = _resolve_ac(ac_code, ac_lookup, state_id)
@@ -555,10 +770,13 @@ def build_multi_state(state_ids, db_path, roll_year=None, ac_codes=None):
                 print(f"  [{state_id}] {ac_code} UNPARSEABLE, skipped: {exc}")
                 continue
             conn.executemany(INSERT_SQL, _records_to_rows(records))
+            nameless_results.append(
+                {"ac_code": ac_code, "nameless": _nameless_census(records)})
             state_total += len(records)
             if any(r.locality for r in records):
                 acs_with_locality.add(ac_code)
             print(f"  [{state_id}] {ac_code}: {len(records)} records")
+        _report_nameless(nameless_results, prefix=f"  [{state_id}] ")
         print(f"{state_id}: {state_total} records from {len(paths) - len(unparseable)} files (roll year {state_roll_year})")
         if unparseable:
             print(f"  [{state_id}] {len(unparseable)} of {len(paths)} ACs were "
@@ -647,6 +865,10 @@ def _build_one_ac(task):
                     "SELECT DISTINCT locality FROM voters WHERE locality IS NOT NULL AND locality != ''"
                 ).fetchall()
             )
+            # Read back rather than skipped: an alarm that only fires on a
+            # from-scratch build is silent on every re-run, which is when the
+            # output is actually read.
+            nameless = _nameless_census_from_db(conn)
         finally:
             conn.close()
         return {
@@ -655,6 +877,7 @@ def _build_one_ac(task):
             "has_locality": bool(localities), "localities": localities, "skipped": True,
             "unparseable": None,
             "translit": BackfillResult(0, 0, []),
+            "nameless": nameless,
         }
 
     connector = connector_cls()
@@ -673,6 +896,10 @@ def _build_one_ac(task):
             "row_count": 0, "file_size_bytes": 0, "has_locality": False,
             "localities": [], "skipped": False, "unparseable": str(exc),
             "translit": BackfillResult(0, 0, []),
+            # An AC that never parsed has no parts to have lost names from.
+            # None rather than an empty census: nothing was checked here, and
+            # a zero would read as a clean result.
+            "nameless": None,
         }
 
     ac_conn = sqlite3.connect(ac_db_path)
@@ -692,6 +919,7 @@ def _build_one_ac(task):
         # its stdout interleaves with every other AC's. build_per_ac() sums
         # them and reports once per state.
         "translit": translit,
+        "nameless": _nameless_census(records),
     }
 
 
@@ -974,6 +1202,7 @@ def build_per_ac(state_ids, out_dir, contract="c1", patch=0, roll_year=None, wor
             ),
             prefix=f"  [{state_id}] ",
         )
+        _report_nameless(results, prefix=f"  [{state_id}] ")
         ac_index_rows = [
             (
                 state_id, r["ac_code"], r["ac_name"], r["district"], contract, patch,
