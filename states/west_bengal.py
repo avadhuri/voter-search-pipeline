@@ -128,7 +128,11 @@ GENDER_NORMALIZE = {
 
 _GID_NAME = re.compile(r"^G([0-9A-Fa-f]{2,4})$")
 PUA_BASE = 0xE000        # undecoded glyph gid N -> chr(PUA_BASE + N)
+MAC_LATIN_MIN = 3        # first gid of the Latin run in Macintosh glyph order
 MAC_LATIN_MAX = 97       # last gid of the Latin run in Macintosh glyph order
+# gids 0/1/2 are .notdef/.null/nonmarkingreturn -- present in a subset's
+# Differences array, never carrying text.
+TEXTLESS_MAX_GID = 2
 
 
 def _patch_pdfminer_gid_encoding():
@@ -151,12 +155,33 @@ def _patch_pdfminer_gid_encoding():
     def get_encoding(cls, name, diff=None):
         pairs = _gid_pairs(diff) if diff else None
         if pairs:
-            # Latin subsets stay inside the Macintosh Latin run; a Bengali
-            # subset always reaches past it, and its low gids are Bengali
-            # glyphs rather than ASCII -- so the rule is decided per font.
-            latin = all(3 <= gid <= MAC_LATIN_MAX for _, gid in pairs)
+            # Two separate questions, and conflating them is what this
+            # function got wrong for months:
+            #
+            #   1. Is this font a Latin subset?  Latin subsets stay inside
+            #      the Macintosh Latin run; a Bengali subset always reaches
+            #      past it.  Only text-bearing glyphs are evidence -- a
+            #      .notdef says nothing about what script a font is in, so
+            #      it gets no vote.  Giving it one made a single textless
+            #      entry veto every readable glyph beside it, sending whole
+            #      pages of ASCII into the private-use area to be blanked
+            #      downstream as "an unrecognized Bengali-script font".
+            #
+            #   2. Can this glyph be rendered as ASCII?  That is per glyph,
+            #      not per font, and it belongs here in the mapping.
+            textual = [gid for _, gid in pairs if gid > TEXTLESS_MAX_GID]
+            # An all-textless font carries no text and so cannot be shown to
+            # be Latin; a vacuous all() would call it Latin anyway.
+            latin = bool(textual) and all(gid <= MAC_LATIN_MAX for gid in textual)
+            if not latin:
+                return {code: chr(PUA_BASE + gid) for code, gid in pairs}
+            # Every textual gid is inside the run, so the only codes reaching
+            # the else here are the textless ones.  They contribute no
+            # characters -- which is what "" says exactly, where dropping the
+            # code would make pdfminer substitute a literal "(cid:N)" into
+            # the name and chr(gid + 29) would put a control character there.
             return {
-                code: (chr(gid + 29) if latin else chr(PUA_BASE + gid))
+                code: (chr(gid + 29) if MAC_LATIN_MIN <= gid <= MAC_LATIN_MAX else "")
                 for code, gid in pairs
             }
         return original(name, diff)
