@@ -61,7 +61,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from states.registry import STATE_CONNECTORS
 from states.roll_years import resolve_roll_year
-from transliteration import latin_residue
+from transliteration import latin_residue, needs_latin_bridge
 
 # The intensive-revision cycle that produced these rolls ran 2002-2006.
 # Anything outside it is a stamping bug, not a state we haven't met.
@@ -271,7 +271,7 @@ class Tally:
         self.residue = {}
         self.unusable_age = 0
         self.age_decades = collections.Counter()
-        self.latin_on_latin_state = 0
+        self.latin_on_latin_row = 0
 
     def note_examples(self, key, rows):
         """First few offending rows for `key`, kept across files so the
@@ -315,19 +315,26 @@ def tally_state(conn, state_id, tally):
 
     named = "state = ? AND full_name IS NOT NULL AND full_name != ''"
     if "full_name_latin" in columns:
-        script = STATE_CONNECTORS.get(state_id, {}).get("script", "latin")
-        if script != "latin":
-            tally.blank["full_name_latin"] += _count(
-                conn, f"{named} AND {_blank('full_name_latin')}", (state_id,))
-            for native, latin in conn.execute(
-                f"SELECT DISTINCT full_name, full_name_latin FROM voters "
-                f"WHERE {named} AND full_name_latin IS NOT NULL", (state_id,)
-            ):
-                if latin_residue(latin):
-                    tally.residue[native] = latin
-        else:
-            tally.latin_on_latin_state += _count(
-                conn, f"{named} AND NOT {_blank('full_name_latin')}", (state_id,))
+        # Whether a row needs a romanized column is a fact about the name in
+        # it, not about the state it belongs to. Registering West Bengal as
+        # script='bengali' -- which it is, for ~265 of its ACs -- would
+        # otherwise report all 2M rows of its Latin-typeset Kolkata ACs as
+        # missing a full_name_latin they have no use for, and that finding
+        # is a BLOCKER. Both directions are per-row for the same reason.
+        conn.create_function(
+            "needs_latin_bridge", 1, lambda t: 1 if needs_latin_bridge(t) else 0)
+        native_row = f"{named} AND needs_latin_bridge(full_name)"
+        tally.blank["full_name_latin"] += _count(
+            conn, f"{native_row} AND {_blank('full_name_latin')}", (state_id,))
+        for native, latin in conn.execute(
+            f"SELECT DISTINCT full_name, full_name_latin FROM voters "
+            f"WHERE {native_row} AND full_name_latin IS NOT NULL", (state_id,)
+        ):
+            if latin_residue(latin):
+                tally.residue[native] = latin
+        tally.latin_on_latin_row += _count(
+            conn, f"{named} AND NOT needs_latin_bridge(full_name) "
+                  f"AND NOT {_blank('full_name_latin')}", (state_id,))
 
     tally.unusable_age += _count(
         conn, "state = ? AND (age IS NULL OR age < ?)", (state_id, MIN_ELECTOR_AGE))
@@ -407,10 +414,12 @@ def findings_for(state_id, tally):
 
     # --- the Latin bridge --------------------------------------------------
     if tally.blank["full_name_latin"]:
-        add("BLOCKER", f"{tally.blank['full_name_latin']} named rows have no "
-                       f"full_name_latin, and this state's script is {script!r} -- "
-                       f"those rows match nothing a Latin-script query can type. Run "
-                       f"the build (it backfills) or have the connector supply it")
+        add("BLOCKER", f"{tally.blank['full_name_latin']} named rows carry a "
+                       f"non-Latin name and no full_name_latin -- those rows match "
+                       f"nothing a Latin-script query can type. Run the build (it "
+                       f"backfills) or have the connector supply it. Counted per "
+                       f"row, so a Latin-typeset AC inside a non-Latin state "
+                       f"(state script is {script!r}) is not implicated")
     if tally.residue:
         examples = "; ".join(
             f"{n} -> {l}" for n, l in list(tally.residue.items())[:EXAMPLES])
@@ -418,11 +427,13 @@ def findings_for(state_id, tally):
                        f"that still holds native-script characters -- the scheme has "
                        f"no mapping for them, so a Latin query scores badly. The fix "
                        f"is a connector-supplied full_name_latin. e.g. {examples}")
-    if tally.latin_on_latin_state:
-        add("WARNING", f"{tally.latin_on_latin_state} rows carry a full_name_latin "
-                       f"but the state is registered script='latin' -- if the rolls "
-                       f"aren't actually Latin, fix the registry: script='latin' is "
-                       f"what stops the backfill running at all")
+    if tally.latin_on_latin_row:
+        add("WARNING", f"{tally.latin_on_latin_row} rows carry a full_name whose "
+                       f"characters a Latin query can already type, plus a "
+                       f"full_name_latin that therefore duplicates it. Harmless to "
+                       f"serve, but it means the backfill ran over rows it had no "
+                       f"work to do on -- check the connector isn't romanizing "
+                       f"names that were already Latin")
 
     # --- age, which the required year-of-birth filter reads ----------------
     if tally.unusable_age:

@@ -144,12 +144,31 @@ def latin_residue(text):
     return sorted(set(INDIC_RE.findall(text or "")))
 
 
+def needs_latin_bridge(text):
+    """True if this string carries characters a Latin-script query cannot
+    type -- i.e. this row is unsearchable from a Latin keyboard unless a
+    romanized column is filled in for it.
+
+    The per-*row* counterpart to the registry's per-state `script` field,
+    and the one servability actually turns on. The two are not the same
+    question and must not be substituted for each other: `script` answers
+    "could any row in this state be non-Latin?", which is a routing hint for
+    whether to run the backfill at all, while this answers "does *this* name
+    need romanizing?". West Bengal is why the distinction is load-bearing --
+    its Kolkata ACs are Latin-typeset and its other ACs are Bengali, in one
+    state, permanently. Keying a per-row check off the state's script counts
+    every Latin row in a non-Latin state as missing a column it has no use
+    for.
+    """
+    return bool(INDIC_RE.search(text or ""))
+
+
 def is_latin_query(text):
     """True if text has no Indic codepoints, i.e. it should be matched
     against a non-Latin-script state's *_latin columns rather than its raw
     ones. A native-script query still matches the raw columns directly, no
     transliteration involved."""
-    return bool(text) and not INDIC_RE.search(text)
+    return bool(text) and not needs_latin_bridge(text)
 
 
 def non_latin_state_ids(state_ids=None):
