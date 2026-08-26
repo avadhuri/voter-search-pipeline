@@ -263,6 +263,35 @@ def test_the_three_conjuncts_read_off_latin_origin_names():
     assert decode(_pua("72"))[0] == decode(_pua("56b4"))[0]
 
 
+def test_two_ligatures_labelled_ra_phala_are_not_ra_phalas():
+    """48 and 127 read as গ্র and প্র. They are গ্ধ and প্প.
+
+    Eight glyphs decode to a cluster ending in a ra-phala. Six are right and
+    carry 37-112 cells each; these two are wrong in every cell they appear in.
+    The oracle is the names, which admit one spelling apiece -- স্নিগ্ধা,
+    বাপ্পা, বাপ্পাদিত্য, আপ্পাল -- and which the old table turned into
+    স্নিগ্রা, বাপ্রা, বাপ্রাদিত্য, আপ্রাল, none of which is a name. A 900-dpi
+    render of the cells agrees.
+
+    Neither is reachable by the decoder oracle: it needs MIN_CELLS to call a
+    glyph, and these carry 7 and 9. They were found by the other instrument --
+    a conjunct absent from the decoded output over a 25-AC sweep. গ্ধ and প্প
+    were emitted zero times in 58,258 name cells, because the only glyph that
+    emits either was reading as something else."""
+    assert sl.GID_MAP[48] == "গ" + sl.HASANT + "ধ"
+    assert sl.GID_MAP[127] == "প" + sl.HASANT + "প"
+    for hexstr, expected in (("c2b27730de82c1", "স্নিগ্ধা"),
+                             ("85c17fc1", "বাপ্পা"),
+                             ("85c17fc1c265578299", "বাপ্পাদিত্য"),
+                             ("05c17fc19b", "আপ্পাল")):
+        text, unknown = decode(_pua(hexstr))
+        assert text == expected, (hexstr, text, expected)
+        assert unknown == []
+    # The six that genuinely are ra-phalas keep their reading -- the fix is
+    # two labels, not a change to how a ra-phala is composed.
+    assert decode(_pua("91"))[0] == "ভ" + sl.HASANT + "র"
+
+
 def test_the_du_connector_is_silence_not_a_missing_letter():
     """223 is only ever drawn between ড়/ঢ় and a following ু/ূ -- the u-matra
     cannot sit under the nukta, so the font draws a connector for it. Dropping
