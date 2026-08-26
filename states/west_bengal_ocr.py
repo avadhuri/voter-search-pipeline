@@ -84,6 +84,27 @@ refusing -- see below -- are damaged rows that mostly carry no serial, so
 they land in the denominator and not the numerator. The widening's own
 effect is what the 93.07/93.38 pair is for.)
 
+**"Serial recovery" counts serials present, not serials right, and the gap
+between those is large.** Read next to the confusion matrix below it is easy
+to take for a quality figure; it is not one. A part is numbered 1..N, so two
+rows in one part holding the same serial means at least one is wrong -- and
+**36,780 rows across the corpus collide that way, 9.0%**, in all 583 parts,
+up to a quarter of a part at worst. They are not duplicate electors: of
+36,827 extra rows only **47** match another on every field, so the row count
+is honest and it is the serial column that is not.
+
+The cause is partly known and deliberately not written up as more than that.
+Rows in a collision group carry the "read as Latin digits" remark 36.10% of
+the time against 11.48% for rows that collide with nothing -- a 3.1x
+enrichment, so the Latin-arrival unreliability measured below is real here
+too. But it cannot be the main cause: **63.9% of colliding rows arrived in
+Bengali**, and a second mechanism is unidentified. Worth noticing that the
+matrix below was built over 38,896 *serial* tokens and then used to set the
+*age* rule -- a Latin-arriving age is dropped, a Latin-arriving serial is
+kept with a remark. That asymmetry may well be right (a wrong age moves an
+elector out of reach of a required search field, a wrong serial does not),
+but it was never argued, and the collision figure is what it costs.
+
 **The remaining 6.6% is scan quality, not a parser defect** -- measured
 rather than assumed, and recorded so nobody spends a week on it. Of the rows
 with no serial, 89-93% carry no digit-shaped token in the cell at all, and
