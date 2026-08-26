@@ -19,6 +19,41 @@ square on the platen), but every data row contains exactly one of
 fields the app actually searches. Splitting on it costs nothing when a scan
 is skewed.
 
+**The serial column is consumed by shape and confirmed by value.** Position
+0 is only taken as a serial if it is a run of digits -- a scan sometimes
+drops the cell, and trusting position then ate the first word of the name.
+That shape used to be capped at three digits, which did the same damage from
+the other end: a part of this roll can run past a thousand electors (the
+largest holds 1,137), so from serial 1000 the token stopped looking like a
+serial and stayed where an unconsumed leading token goes, at the front of
+full_name. 1,529 rows across the three ACs -- 508 AC287, 449 AC291, 572
+AC294 -- had a number in front of the name the site searches on, and three
+of them had nothing else, so consuming the cell correctly takes those three
+from a name that was never a name to an honest "name not read".
+
+Widening the shape settles the name unconditionally. The value is a separate
+question, because a four-digit token in that cell is sometimes 1990 or 1889 --
+a year, or a four-digit misread of a three-digit serial -- and a wrong serial
+is worse than none. `_confirm_wide_serials()` decides it at part scale: a
+part is numbered 1..N in printing order, so a row's position predicts its
+serial up to a constant, and candidates sharing that constant are reading the
+same numbering. SERIAL_RUN_MIN of them agreeing is not something OCR arrives
+at by accident. That admits 1,245 of 1,501 candidates corpus-wide and takes
+serial recovery from 93.07% to 93.38%; 202 of the 256 it refuses stand
+entirely alone.
+
+**The remaining 6.6% is scan quality, not a parser defect** -- measured
+rather than assumed, and recorded so nobody spends a week on it. Of the rows
+with no serial, 89-93% carry no digit-shaped token in the cell at all, and
+83-89% of those have nothing in the serial column's band: Vision read no ink
+there. Of what is left, the Latin-letter misreads have no consistent
+glyph-to-digit mapping to invert (`b` stands for 8, 2 and 7 in different
+parts; `G` for 6, 3 and 7; `S` for 9 and 5), and the stray-separator forms
+("2.45", "৮৮-৩", "9-96") are only about 70% right raw and recoverable only
+under a neighbour check that already supplies the answer -- about 0.1 points
+for a rule that can be wrong. AC291 reading 89.4% against AC287's 97.7% is
+that floor and not a difference in code.
+
 **An age is stored only when its token arrived entirely in Bengali
 numerals and lands in 18..120.** That rule replaces a blanket "store no age",
 which this module carried from `d8bbc0c` until the evidence under it was
@@ -157,6 +192,33 @@ EPIC_WHOLE = re.compile(r"^[A-Z]{3}\d{7}$")
 
 # One to three digits in either script -- the age column.
 AGE_SHAPE = re.compile(r"^(?:[০-৯]{1,3}|\d{1,3})$")
+
+# The leftmost column, in either script. Deliberately wider than AGE_SHAPE,
+# which used to do this job too: a part of this roll can run past a thousand
+# electors -- the largest in the corpus holds 1,137 -- and a three-digit cap
+# meant every serial from 1000 on failed to look like one and stayed where an
+# unconsumed leading token goes, at the front of full_name. That is 1,529 rows
+# whose searchable name began with a number.
+SERIAL_SHAPE = re.compile(r"^(?:[০-৯]+|\d+)$")
+
+# A serial the column's ordinary three-digit width can carry is taken as read.
+# A wider one is located and trimmed off the name either way, but is only
+# stored once the part's own numbering confirms it -- see
+# _confirm_wide_serials(), which is why the check lives at part level and not
+# in parse_page: the numbering runs 1..N across a whole part, so the part is
+# the scope that can speak to it.
+SERIAL_PLAIN_MAX = 999
+
+# How many rows of a part must agree on where a wide serial sits before it is
+# believed. A part whose numbering has crossed 1000 offers dozens of
+# mutually-consistent candidates, while what this is protecting against --
+# 1990, 1889, 1965, 2006, a four-digit misread of a three-digit serial --
+# arrives alone. Over the whole corpus the rule admits 1,245 of 1,501
+# candidates, and 202 of the 256 it refuses stand entirely by themselves. The
+# case for 5 rather than 2 is a single pair: 1936 and 1955, nineteen rows
+# apart in AC291 part 135, agreeing with each other by arithmetic accident in
+# a part far too small to hold either as a serial. Two is not a numbering.
+SERIAL_RUN_MIN = 5
 
 # The window an age token has to land in to be stored. Below the floor the
 # elector could not have been enrolled; above the ceiling the token is not an
@@ -429,17 +491,27 @@ def parse_row(tokens: list[str]) -> dict | None:
     # Only consume a leading token as the serial if it actually looks like
     # one. A scan sometimes drops the serial entirely, and taking position 0
     # on faith then ate the first word of the name -- which is the field the
-    # whole site searches on.
+    # whole site searches on. A run of digits is the one thing that is never
+    # a name word, so the cell is consumed on shape and judged on value:
+    # anything past SERIAL_PLAIN_MAX comes back as `serial_wide` for the part
+    # to confirm rather than as a serial this row can vouch for on its own.
     name_from = 0
     serial = None
-    while name_from < r and AGE_SHAPE.match(tokens[name_from]):
-        if serial is None:
-            serial = bengali_int(tokens[name_from])
-            if serial is None:
-                serial = int(tokens[name_from])
-                remarks.append(f"serial no read as Latin digits {tokens[name_from]!r}")
+    wide = None
+    while name_from < r and SERIAL_SHAPE.match(tokens[name_from]):
+        token = tokens[name_from]
         name_from += 1
-    if serial is None:
+        if serial is not None or wide is not None:
+            continue
+        value = bengali_int(token)
+        if value is None:
+            value = int(token)
+            remarks.append(f"serial no read as Latin digits {token!r}")
+        if value <= SERIAL_PLAIN_MAX:
+            serial = value
+        else:
+            wide = value
+    if serial is None and wide is None:
         remarks.append("serial no not read")
 
     epic, epic_at = _epic(tokens)
@@ -515,6 +587,7 @@ def parse_row(tokens: list[str]) -> dict | None:
 
     return {
         "serial_no": serial,
+        "serial_wide": wide,
         "full_name": full_name,
         "relation_code": RELATION_WORDS[tokens[r]],
         "full_relative_name": full_relative_name,
@@ -526,7 +599,13 @@ def parse_row(tokens: list[str]) -> dict | None:
 
 
 def parse_page(response: dict) -> list[dict]:
-    """Every voter row on one OCR'd page."""
+    """Every voter row on one OCR'd page.
+
+    A row whose serial ran past SERIAL_PLAIN_MAX comes back with `serial_no`
+    None and the value parked in `serial_wide`: one page cannot confirm a
+    numbering that belongs to the whole part. parse_part() resolves it, and
+    is what the connector calls.
+    """
     rows = []
     for words in group_rows(_words(response)):
         row = parse_row([w["text"] for w in words])
@@ -667,9 +746,44 @@ def page_failures(part_dir) -> list:
     return failures
 
 
+def _confirm_wide_serials(rows: list[dict]) -> list[dict]:
+    """Store the serials past 999 that a part's own numbering vouches for.
+
+    A part is numbered 1..N in the order its rows are printed, so a row's
+    position in this list predicts its serial up to a constant -- the count
+    of that part's electors ahead of it that never became rows. Candidates
+    sharing that constant are therefore reading the same numbering, and a
+    run of them is not something OCR arrives at by accident: dozens of rows
+    agreeing on where the numbering sits is the signature of a column, and a
+    lone 1965 is the signature of a year.
+
+    Refusing one costs the serial and nothing else -- the token has already
+    been trimmed off full_name by then, which is the half of this that the
+    site actually searches. The remark says which value was refused, so the
+    population stays countable rather than merely absent.
+    """
+    offsets = {}
+    for i, row in enumerate(rows):
+        wide = row["serial_wide"]
+        if wide is not None:
+            offsets[wide - i] = offsets.get(wide - i, 0) + 1
+    for i, row in enumerate(rows):
+        value = row.pop("serial_wide")
+        if value is None:
+            continue
+        if offsets[value - i] >= SERIAL_RUN_MIN:
+            row["serial_no"] = value
+        else:
+            row["remark"] = "; ".join(filter(None, [
+                row["remark"],
+                f"serial no not read: {value} unconfirmed by the part's numbering",
+            ]))
+    return rows
+
+
 def parse_part(part_dir) -> list[dict]:
     """Every voter row in one part, in page order."""
     rows = []
     for path in window_paths(part_dir):
         rows.extend(parse_response_file(load_window(path)))
-    return rows
+    return _confirm_wide_serials(rows)
