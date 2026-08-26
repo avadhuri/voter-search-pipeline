@@ -215,8 +215,22 @@ DHA_HOOK_GIDS = {222}            # দ্ব -> ধ
 #
 # Each reading is non-redundant, which is what makes it a distinct glyph
 # rather than a duplicate: র already writes রু with 200, হ্র has its own 221,
-# the free-standing ৃ is 214 -- and the table carries no ন্ধ at all, which for
-# a 225-glyph Bengali font is itself evidence of where it went.
+# the free-standing ৃ is 214.
+#
+# An earlier version of this comment went on to say that the table carries no
+# ন্ধ at all, "which for a 225-glyph Bengali font is itself evidence of where
+# it went". That inference is wrong, and it is recorded here rather than
+# quietly deleted because it is the trap this font sets. A conjunct missing
+# from GID_MAP may simply be set the other way -- a HALF_GIDS half form plus
+# the full consonant, with the hasant emitted compositionally -- and so never
+# need a ligature entry at all. Measured across 25 ACs: ন্ধ decodes
+# correctly 393 times by exactly that route, and ম্ভ 232 times. Absence
+# from the table is evidence of nothing.
+#
+# Only a single-ligature conjunct can be mislabelled, and what that produces
+# is absence from the decoded OUTPUT -- the conjunct is never emitted, because
+# the one glyph that would emit it is reading as something else. That is the
+# instrument, and it is what found gids 48 and 127.
 CURL_HOOK_GIDS = {203}
 CURL_HOOK_READINGS = {
     "র": "র" + "ূ",                      # রূপ, স্বরূপ, অরূপ, নুরূল
@@ -330,7 +344,7 @@ GID_MAP = {
     45: "খ",
     46: "গ", 49: "গ",
     47: "গ" + HASANT + "ন",
-    48: "গ" + HASANT + "র",
+    48: "গ" + HASANT + "ধ",                    # স্নিগ্ধা -- not a ra-phala
     51: "গু",                                  # গু (ধূপগুড়ি, জলপাইগুড়ি)
     52: "ঘ",
     53: "ঙ",
@@ -384,7 +398,7 @@ GID_MAP = {
     # pa-varga
     124: "প",
     126: "প" + HASANT + "ত",
-    127: "প" + HASANT + "র",
+    127: "প" + HASANT + "প",                   # বাপ্পাদিত্য -- not a ra-phala
     131: "ফ",
     133: "ব", 141: "ব",             # 140 is the subjoined form, see BA_PHALA_GIDS
     135: "ব" + HASANT + "দ",
