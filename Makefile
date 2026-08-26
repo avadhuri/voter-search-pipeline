@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-vision build-db build-db-ac check-servable decoder-oracle sample-names push-ac-db-dev roll-years migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-vision build-db build-db-ac check-servable decoder-oracle wb-ocr-figures sample-names push-ac-db-dev roll-years migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -317,4 +317,18 @@ wb-decode-census: ## Check the WB decoder against what Bengali forbids word-init
 	  $(if $(STRIDE),--stride $(STRIDE),) \
 	  $(if $(PARTS),--parts $(PARTS),) \
 	  $(if $(STRICT),--strict,) \
+	  $(if $(JSON),--json $(JSON),)
+
+# states/west_bengal_ocr.py's docstring quotes about a dozen corpus figures,
+# and every change that stores more rows moves the denominator under all of
+# them at once. A figure written as fact goes on reading as fact, so the
+# figures are recomputed by this rather than by hand -- rerunning it is the
+# whole audit. BASELINE= points at another checkout's copy of the connector
+# to state a change's effect instead of assuming it small.
+wb-ocr-figures: ## Recompute the WB OCR corpus figures its connector docstring quotes (ACS=, BASELINE=, RAW=, JSON=)
+	$(PY) -m wb_ocr_figures \
+	  --raw-dir $(if $(RAW),$(RAW),$(WB_RAW_DIR)) \
+	  $(if $(ACS),--acs $(ACS),) \
+	  $(if $(BASELINE),--baseline $(BASELINE),) \
+	  $(if $(WORST),--worst $(WORST),) \
 	  $(if $(JSON),--json $(JSON),)

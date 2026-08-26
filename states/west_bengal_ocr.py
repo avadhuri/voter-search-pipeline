@@ -24,11 +24,17 @@ have. The docstring here used to assert that "every data row contains
 exactly one of পিতা/স্বামী/মাতা". Three things about that were false, and
 each was costing electors:
 
-- `অন্য` ("other") is the roll's fourth relation code -- 296 rows.
+- `অন্য` ("other") is the roll's fourth relation code -- 297 rows.
 - Vision reads the relation cell glued to the first word of the relative's
   name often enough to cost 389 more (`পিতানবেন`, `পিতামহঃ`, `পিতা-`).
 - 42 rows begin *at* the relation word, their name cell having produced no
   tokens in that row's band, and were dropped for having nothing before it.
+
+Those counts do not partition: exactly one row is both glued and `অন্য`, so
+297 + 389 is 686 rows where 685 exist, and the first two classes together
+are 685 not 686. Stated because summing them is the obvious thing to do and
+it is wrong by one here -- which is the size at which a discrepancy is worth
+printing rather than the size at which it matters.
 
 727 electors in three ACs, findable by no search at all, none of them
 visible in any figure this module reports: the row simply never existed, so
@@ -44,6 +50,15 @@ part from 1.56% to 2.36% (AC291/part0044, 10 of 423). Those rows were always
 unreadable; before this they were unreadable *and* uncounted. A per-part
 nameless-row alarm calibrated against the old numbers is calibrated against
 a corpus that was hiding its own worst parts.
+
+**Every corpus figure quoted in this docstring is recomputed by `make
+wb-ocr-figures`** (`scripts/wb_ocr_figures.py`), and rerunning it is the
+whole audit. This is not decoration: two figures here had already gone stale
+inside a docstring whose own subject is a previous stale figure, because
+every change that stores more rows moves the denominator under a dozen
+numbers at once and a number written as fact goes on reading as fact.
+`BASELINE=` points it at another checkout's copy of this file, so a change's
+effect on them is stated rather than assumed small.
 
 **What is refused is now only a group that identifies nobody.** The
 distinction matters in the other direction too, because relaxing this test
@@ -251,11 +266,11 @@ RELATION_WORDS = {
 # promoting a word into that set turns any row whose names happen to contain
 # it into a two-relation-word refusal: a fix that loses rows to gain rows.
 # Counted over the whole corpus rather than argued, and stated as the
-# comparison that was actually run: the fallback stores 408,113 rows, of
-# which 296 are rows this module used to refuse. Promoting `অন্য` to a peer
-# instead stores 408,110 -- three fewer than the fallback, and not one more.
-# So the peer arrangement has no upside at all to trade against its cost;
-# there is no row it reaches that the fallback misses.
+# comparison that was actually run: the fallback stores 408,113 rows, of which
+# 297 carry this code and every one of those was refused before. Promoting
+# `অন্য` to a peer instead stores 408,110 -- three fewer than the fallback, and
+# not one more. So the peer arrangement has no upside at all to trade against
+# its cost; there is no row it reaches that the fallback misses.
 #
 # The asymmetry that makes a fallback the right shape rather than a dodge:
 # পিতা/স্বামী/মাতা are kinship terms that do not otherwise occur anywhere in
