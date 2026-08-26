@@ -763,8 +763,30 @@ def parse_row(tokens: list[str]) -> dict | None:
 
     # The two searched fields say so when they came back empty. Every other
     # column can be reconstructed from the source document later; a row with
-    # no name is one no query can ever reach, and the remark is the only
-    # thing that makes those countable instead of merely absent.
+    # no name is one no query can ever reach.
+    #
+    # The remark is not what makes those countable -- the empty field is,
+    # and `WHERE full_name = ''` finds every one of them without reading a
+    # remark at all. An earlier version of this comment claimed otherwise;
+    # it was written about the discriminating case below and wrongly left to
+    # cover both. What the remark does is speak to the reader: it renders
+    # verbatim on the results page, so a blank name carrying no remark shows
+    # a serial and an EPIC with nothing where the name goes, which reads as
+    # the roll not having named this elector rather than as our failure to
+    # read the name. Saying "we could not read it" is the standing rule for
+    # exactly that ambiguity.
+    #
+    # This is why the per-part nameless alarm's rule does not apply here.
+    # That rule -- an undeclared blank already counts as unread -- governs
+    # what the *alarm* may infer from a connector's silence, so that silence
+    # can never buy a clean measurement. It says nothing about what the page
+    # may say to a citizen, and there a page that says nothing is not
+    # neutral. The counter is satisfied by the empty field; the person is
+    # not.
+    #
+    # Keep the wording terse and machine-parseable. Turning it into
+    # citizen-facing language is the serving side's job, and it keys on
+    # these strings.
     #
     # A row that *begins* at the relation word is a distinct failure from a
     # name span that emptied out after trimming, and the remark separates
