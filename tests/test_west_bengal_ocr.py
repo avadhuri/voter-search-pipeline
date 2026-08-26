@@ -125,6 +125,107 @@ def test_a_line_with_two_relation_words_is_rejected_rather_than_guessed():
     assert parse_row(["১", "ক", "পিতা", "খ", "২", "গ", "স্বামী", "ঘ"]) is None
 
 
+def test_the_roll_s_fourth_relation_code_is_read():
+    # `অন্য` ("other") is the fourth code base.py has carried since
+    # Karnataka. Not reading it refused 296 otherwise-perfect rows across the
+    # corpus -- every column present, the elector simply related to their
+    # guardian rather than to a parent or spouse.
+    row = parse_row(["১", "ক", "খ", "অন্য", "গ", "ঘ", "পুং", "৩৫"])
+    assert row["relation_code"] == "O"
+    assert (row["full_name"], row["full_relative_name"]) == ("ক খ", "গ ঘ")
+
+
+def test_the_fourth_code_never_outranks_a_kinship_term():
+    """The discriminating half, and the reason `অন্য` is a fallback rather
+    than a fourth entry in RELATION_WORDS.
+
+    `অন্য` is an ordinary word meaning "other", so unlike পিতা/স্বামী/মাতা it
+    turns up inside names. Promoted to a peer it would make this row carry
+    two relation words and be refused outright -- 3 real rows in the corpus,
+    against the 296 the fallback recovers. Here the row is related by
+    marriage and the word is part of the elector's name; the split has to
+    happen at স্বামী.
+    """
+    row = parse_row(["৬০", "অন্য", "মাল", "স্বামী", "জয়ধন", "মাল", "স্ত্রী", "২৬"])
+    assert row["relation_code"] == "H"
+    assert row["full_name"] == "অন্য মাল"
+    assert row["full_relative_name"] == "জয়ধন মাল"
+
+
+def test_a_relation_word_read_glued_to_the_next_name_is_split():
+    # Vision reads the relation cell and the first word of the relative's
+    # name as one token often enough to cost 389 electors across the corpus.
+    # The row is otherwise whole, so the only thing standing between it and
+    # the index is a missing space.
+    row = parse_row(["১৬৭", "গুরুপদ", "মণ্ডল", "পিতানবেন", "মণ্ডল", "পুং", "৫৮"])
+    assert row["relation_code"] == "F"
+    assert row["full_name"] == "গুরুপদ মণ্ডল"
+    assert row["full_relative_name"] == "নবেন মণ্ডল"
+    assert "glued" in row["remark"] and "পিতানবেন" in row["remark"]
+
+
+def test_a_glued_split_is_only_made_where_a_row_corroborates_it():
+    """"Starts with these letters" is a weak signal, so it is never the only
+    one. A heading that happens to begin with a relation word carries no EPIC
+    and no sex word, and stays out -- which is what stops this from being a
+    hole in the test that keeps the cover page from being parsed as voters.
+    """
+    assert parse_row(["পিতামাতার", "নাম"]) is None
+    assert parse_row(["স্বামীর", "নামের", "তালিকা"]) is None
+
+    # Discriminating: the same tokens are split the moment the group looks
+    # like a row, so what refuses the two above is the corroboration rule and
+    # not some other property of the words.
+    assert parse_row(["পিতামাতার", "নাম", "পুং"])["full_relative_name"] == "মাতার নাম"
+
+
+def test_the_roll_s_own_separators_are_stripped_but_a_name_is_not():
+    # `পিতা-` and `পিতাঃ` are the printed separator surviving inside the
+    # token; `পিতামহঃ` is not a separator at all -- `মহঃ` abbreviates
+    # Mohammad and is the relative's first name. It is the same visarga in
+    # the last two, which is why the strip only ever runs at the front of
+    # the remainder.
+    def relname(glued):
+        return parse_row(["১", "ক", "খ", glued, "গ", "পুং", "৩৫"])["full_relative_name"]
+
+    assert relname("পিতা-") == "গ"
+    assert relname("পিতাঃ") == "গ"
+    assert relname("পিতামহঃ") == "মহঃ গ"
+
+
+def test_a_row_that_begins_at_the_relation_word_is_stored_not_dropped():
+    """These used to be refused, which made 42 electors unreachable by any
+    search. The elector name cell produced no tokens in this row's band --
+    measured on 19 such rows with a readable name column, 18 have the ink
+    standing there and chained onto a neighbouring row.
+
+    What must not happen is the relative's name sliding into the elector's
+    field: the relation word says whose name follows it, so filling the gap
+    would publish a false statement about who this row is.
+    """
+    row = parse_row(["পিতা", "সোম", "টুডু", "৪৬"])
+    assert row is not None
+    assert row["full_name"] == ""
+    assert row["full_relative_name"] == "সোম টুডু"
+    assert row["relation_code"] == "F"
+    assert row["age"] == 46
+    assert "name not read: row begins at the relation word" in row["remark"]
+
+
+def test_an_epic_with_no_elector_attached_is_still_refused():
+    """The other half of storing damaged rows: a group that identifies
+    nobody is not a row to keep.
+
+    ~12,000 groups in the corpus look like this -- an age and an EPIC, the
+    right-hand end of a row whose left half chained into a different group.
+    Storing them would not recover an elector, it would invent one: a
+    nameless row no search can reach, counted in every coverage figure the
+    site publishes. The elector is already indexed from the left half.
+    """
+    assert parse_row(["৪১", "WB", "/", "42", "/", "287", "/", "003523"]) is None
+    assert parse_row(["ex", "৬২", "MYB1200559"]) is None
+
+
 def test_a_latin_age_is_dropped_and_said_so_rather_than_stored():
     # Arrival script is the whole test. A Latin-arriving digit is one Vision
     # read the ink of correctly and then filed under the wrong numeral
