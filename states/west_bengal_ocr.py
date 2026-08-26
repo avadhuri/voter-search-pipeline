@@ -127,6 +127,31 @@ def _upside_down(page: dict) -> bool:
     return down > up
 
 
+# Vision is asked for Bengali (`languageHints: ["bn"]`) and mostly answers in
+# it, but inside a conjunct it reaches for the Assamese form of ra --
+# কীৰ্ত্তনীয়া where the roll prints কীর্ত্তনীয়া. Same letter, two code points;
+# ৰ (U+09F0) is simply not part of Bengali orthography, so an occurrence is a
+# substitution and needs no ground truth to call wrong. Measured on this
+# corpus: 1,172 occurrences across a 48,482-row sample, 2.19% of rows, and
+# the give-away is that the same surname arrives spelled both ways on one
+# page (মুৰ্ম্ম beside মুর্মু). Left alone it is invisible damage of the worst
+# kind -- the name looks right to a reader and a Bengali query for the real
+# spelling matches none of those rows.
+#
+# ৱ (U+09F1) is NOT folded, though it is equally un-Bengali. It is a
+# different letter rather than a variant form, and the nine occurrences in
+# the same sample disagree about what was meant: বেসৱা beside বেসবা on one
+# row argues ব, হজৱেতুন argues র, হোৱাই argues য়. Nine rows in 48,482 is not
+# worth a guess that is wrong a third of the time, so they are left as read.
+ASSAMESE_RA = "\u09f0"
+BENGALI_RA = "\u09b0"
+
+
+def _fold_script_neighbours(text: str) -> str:
+    """The Assamese ra Vision emits mid-conjunct, back to the Bengali one."""
+    return text.replace(ASSAMESE_RA, BENGALI_RA)
+
+
 def _words(response: dict) -> list[dict]:
     """Every word on the page, with absolute pixel boxes, right way up.
 
@@ -144,7 +169,9 @@ def _words(response: dict) -> list[dict]:
     for block in page.get("blocks", []):
         for para in block.get("paragraphs", []):
             for word in para.get("words", []):
-                text = "".join(s.get("text", "") for s in word.get("symbols", []))
+                text = _fold_script_neighbours(
+                    "".join(s.get("text", "") for s in word.get("symbols", []))
+                )
                 if not text:
                     continue
                 box = word.get("boundingBox", {})

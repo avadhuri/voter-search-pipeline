@@ -318,6 +318,35 @@ def test_a_page_scanned_upside_down_parses_to_the_same_rows():
     assert [r["gender"] for r in inverted] == ["M", "F"]
 
 
+def test_assamese_ra_is_folded_back_to_the_bengali_one():
+    """Vision hinted `bn` still reaches for Assamese ra inside a conjunct.
+    It is the same letter at a different code point, and ৰ does not occur in
+    Bengali orthography, so this is unconditionally safe on this corpus --
+    and it has to happen, because a Bengali query for the real spelling
+    matches none of the rows that carry the wrong one."""
+    rows = [["\u09e7", "\u09ae\u09b9\u09bf\u09a8\u09cd\u09a6\u09f0", "\u09aa\u09bf\u09a4\u09be",
+             "\u09ac\u09bf\u09a8\u09cd\u09a6\u09f0", "\u09aa\u09c1\u0982", "\u09e9\u09eb", "WBA1234567"]]
+    out = parse_page(_page(rows))
+    assert len(out) == 1
+    assert "\u09f0" not in out[0]["full_name"]
+    assert "\u09f0" not in out[0]["full_relative_name"]
+    assert out[0]["full_name"] == "\u09ae\u09b9\u09bf\u09a8\u09cd\u09a6\u09b0"
+    assert out[0]["full_relative_name"] == "\u09ac\u09bf\u09a8\u09cd\u09a6\u09b0"
+
+
+def test_assamese_wa_is_left_alone():
+    """The other un-Bengali code point Vision emits is *not* folded. ৱ is a
+    different letter rather than a variant form, and the real occurrences
+    disagree about what was meant -- বেসৱা beside বেসবা argues ব, হজৱেতুন
+    argues র, হোৱাই argues য়. Nine rows in a 48,482-row sample is not worth a
+    guess that is wrong a third of the time, so they stay as read and stay
+    visible."""
+    rows = [["\u09e7", "\u09b9\u09cb\u09f1\u09be\u0987", "\u09aa\u09bf\u09a4\u09be",
+             "\u0997\u09be\u099c\u09b2", "\u09aa\u09c1\u0982", "\u09e9\u09eb", "WBA1234567"]]
+    out = parse_page(_page(rows))
+    assert out[0]["full_name"] == "\u09b9\u09cb\u09f1\u09be\u0987"
+
+
 def test_an_upright_page_is_not_flipped():
     """The guard against the correction firing on the 95% of pages that were
     always fine -- on those it has to be exactly a no-op."""
