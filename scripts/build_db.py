@@ -412,11 +412,13 @@ def _report_backfill(result, prefix=""):
 # for that reason: if the band ever fills, the report is where it shows up
 # first, rather than in a threshold quietly moved to make a build quiet.
 #
-# A second corpus corroborates that gap without narrowing it. Scanning the 172
-# finalized West Bengal p3 per-AC files -- 26.9M rows, 665,521 carrying no
-# name -- leaves a residual of 88 nameless rows across 43 ACs once five
-# identified populations are set aside. Two limits on what that buys, both of
-# which matter more than the number does:
+# A second corpus extends that bracket rather than establishing one: the
+# Shree-Lipi figures above are what set it, and what follows corroborates them
+# from a disjoint population without narrowing them. Scanning the 172 finalized
+# West Bengal p3 per-AC files -- 26.9M rows, 665,521 carrying no name -- leaves
+# a residual of 88 nameless rows across 43 ACs once five identified populations
+# are set aside. Two limits on what that buys, both of which matter more than
+# the number does:
 #
 # It is measured per AC, and both thresholds here are per part. 88 rows across
 # 43 ACs cannot be turned into a per-part rate without knowing how they
