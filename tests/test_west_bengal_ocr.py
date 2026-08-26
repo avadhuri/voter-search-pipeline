@@ -13,9 +13,11 @@ import os
 import pytest
 
 from states.west_bengal_ocr import (
+    BN_DIGITS,
     MAX_ELECTOR_AGE,
     MIN_ELECTOR_AGE,
     PAGES_MANIFEST,
+    SERIAL_RUN_MIN,
     bengali_int,
     group_rows,
     ocr_gaps,
@@ -489,6 +491,92 @@ def test_a_missing_manifest_is_a_gap_rather_than_a_pass(tmp_path):
     ac_dir = tmp_path / "AC287"
     _write_window(ac_dir / "part0001", 1, 5, [ROW])
     assert ocr_gaps(ac_dir, ["part0001"]) == [f"no {PAGES_MANIFEST} in {ac_dir}"]
+
+
+def _bn(n):
+    """`n` in Bengali numerals, the way the serial column is actually printed."""
+    return "".join(BN_DIGITS[int(c)] for c in str(n))
+
+
+def _numbered_rows(first, count):
+    """`count` consecutive rows of a part, numbered from `first`."""
+    return [[_bn(n), "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫"]
+            for n in range(first, first + count)]
+
+
+def _write_pages(part_dir, first, pages):
+    """One response file whose pages differ from each other -- `_write_window`
+    repeats a single page, which cannot express a numbering."""
+    part_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"responses": [_page(rows) for rows in pages]}
+    path = part_dir / f"p{first:04d}-{first + len(pages) - 1:04d}.json.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+    return path
+
+
+def test_a_serial_past_the_third_digit_is_trimmed_off_the_name():
+    """The half of this that matters most, and the half a page can settle on
+    its own. A part of this roll can run past a thousand electors, and while
+    the serial column was capped at three digits the fourth-digit rows did
+    not merely lose a serial -- the token stayed where an unconsumed leading
+    token goes, at the front of the field the whole site searches."""
+    row = parse_row(["১০০০", "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল", "পুং", "৩৫"])
+    assert row["full_name"] == "রমেশ মণ্ডল"
+    # Located, but not yet vouched for: one row cannot confirm a numbering.
+    assert row["serial_no"] is None
+    assert row["serial_wide"] == 1000
+
+
+def test_a_part_numbered_past_a_thousand_keeps_every_serial(tmp_path):
+    part = tmp_path / "part0001"
+    _write_pages(part, 1, [_numbered_rows(995, 5), _numbered_rows(1000, 5),
+                           _numbered_rows(1005, 5)])
+    rows = parse_part(part)
+    assert [r["serial_no"] for r in rows] == list(range(995, 1010))
+    # parse_part is what the connector calls, so the unresolved field must
+    # not survive it.
+    assert all("serial_wide" not in r for r in rows)
+    assert all(r["remark"] == "EPIC no not read" for r in rows)
+
+
+def test_a_lone_year_shaped_token_is_refused_but_still_trimmed(tmp_path):
+    """What the run test is for. 1965 in the serial cell of one row of a
+    part numbered in the low hundreds is not that part's numbering, and no
+    number of neighbours agree with it. The name is cleaned either way --
+    refusing the value costs the serial and nothing else."""
+    part = tmp_path / "part0001"
+    stray = [_bn(1965), "পরেশ", "কিসকু", "পিতা", "কেশর", "কিসকু", "পুং", "৪৬"]
+    _write_pages(part, 1, [_numbered_rows(1, 5), [stray] + _numbered_rows(6, 4)])
+    rows = parse_part(part)
+    assert rows[5]["full_name"] == "পরেশ কিসকু"
+    assert rows[5]["serial_no"] is None
+    assert "serial no not read: 1965 unconfirmed" in rows[5]["remark"]
+    assert [r["serial_no"] for r in rows if r["serial_no"]] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+
+def test_a_run_shorter_than_the_threshold_is_not_a_numbering(tmp_path):
+    """Two tokens agreeing is arithmetic, not evidence: AC291's part 135
+    holds a 1936 and a 1955 nineteen rows apart, in a part far too small to
+    hold either as a serial. SERIAL_RUN_MIN is what separates that from a
+    column."""
+    part = tmp_path / "part0001"
+    short = _numbered_rows(998, 2 + SERIAL_RUN_MIN - 1)   # only 1000.. counts
+    _write_pages(part, 1, [short])
+    rows = parse_part(part)
+    confirmed = [r["serial_no"] for r in rows if r["serial_no"] and r["serial_no"] > 999]
+    assert len(confirmed) == 0
+    assert [r["serial_no"] for r in rows[:2]] == [998, 999]
+
+
+def test_parse_page_leaves_a_wide_serial_for_the_part_to_settle():
+    """The seam is deliberate and the docstring says so: a page holds about
+    46 rows of a numbering that runs 1..N across the part, so the page is
+    not the scope that can confirm one."""
+    page = parse_page(_page([[_bn(1000), "রমেশ", "মণ্ডল", "পিতা", "হরি", "মণ্ডল",
+                              "পুং", "৩৫"]]))
+    assert page[0]["serial_no"] is None
+    assert page[0]["serial_wide"] == 1000
 
 
 def test_parse_part_returns_every_page_of_every_window(tmp_path):
