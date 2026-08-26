@@ -124,15 +124,46 @@ def test_a_latin_subset_with_no_textless_glyph_is_unchanged():
 RAW_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw", "west_bengal")
 
 
-def _names(ac_code, part):
+def _records(ac_code, part):
     from states.registry import STATE_CONNECTORS
 
     conn = STATE_CONNECTORS["west_bengal"]["connector_cls"]()
     ac = {a.ac_code: a for a in conn.list_constituencies()}[ac_code]
     with zipfile.ZipFile(os.path.join(RAW_DIR, ac_code + ".zip")) as zf:
         blob = zf.read("part%04d.pdf" % part)
-    recs = conn._parse_part(blob, ac, 2002, part, "part%04d.pdf" % part)
-    return [(r.serial_no, r.full_name or "") for r in recs]
+    return conn._parse_part(blob, ac, 2002, part, "part%04d.pdf" % part)
+
+
+def _names(ac_code, part):
+    return [(r.serial_no, r.full_name or "") for r in _records(ac_code, part)]
+
+
+def _pua_gid_range(ac_code, part):
+    """(lowest, highest) glyph id still reaching the page as private-use.
+
+    Part-level, not per-font, and the difference matters: pdfplumber reports
+    fontname as "unknown" for every char in these PDFs, so a part that mixes a
+    genuinely Bengali font with a misclassified Latin one would show the
+    Bengali font's high gid here and hide the Latin one behind it. That mixing
+    is real -- 1 of 38 fonts on AC148 part 22 carries the textless glyph. So
+    this bounds the claim rather than proving it per row.
+    """
+    import io
+
+    import pdfplumber
+
+    with zipfile.ZipFile(os.path.join(RAW_DIR, ac_code + ".zip")) as zf:
+        blob = zf.read("part%04d.pdf" % part)
+    lo, hi = None, None
+    with pdfplumber.open(io.BytesIO(blob)) as pdf:
+        for page in pdf.pages:
+            for ch in page.chars:
+                if len(ch["text"]) != 1 or not _is_pua(ch["text"]):
+                    continue
+                gid = ord(ch["text"]) - PUA_BASE
+                lo = gid if lo is None else min(lo, gid)
+                hi = gid if hi is None else max(hi, gid)
+    return lo, hi
 
 
 @pytest.mark.skipif(not os.path.exists(os.path.join(RAW_DIR, "AC143.zip")),
@@ -158,3 +189,58 @@ def test_no_recovered_name_carries_a_non_printable_character():
         bad = [ch for ch in name if not ch.isprintable() and ch != " "]
         assert not bad, "serial %s: %r" % (serial, name)
         assert "(cid:" not in name, "serial %s: %r" % (serial, name)
+
+
+# Parts that still refuse after the fix, and must: their fonts genuinely reach
+# past the Latin run, so the remark they carry is true of them.
+STILL_REFUSED = [("AC146", 90), ("AC146", 92)]
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(RAW_DIR, "AC146.zip")),
+                    reason="raw data not downloaded")
+@pytest.mark.parametrize("ac_code,part", STILL_REFUSED)
+def test_a_surviving_blank_sits_in_a_font_that_really_is_past_the_latin_run(
+        ac_code, part):
+    """The remark has to be true of exactly the rows still carrying it.
+
+    "name in an unrecognized Bengali-script font" is a specific claim about
+    the source, and before this change it was false on 162,642 rows whose
+    text was ASCII. The fix is only complete if what remains blanked is
+    blanked for the reason the remark gives -- otherwise the string would
+    need a synchronised edit in the same release, and a claim that has to be
+    kept true by hand goes stale the first time nobody remembers to.
+
+    Asserted rather than observed. The difference between "we saw no
+    exceptions" and "an exception fails the suite" is the whole point.
+    """
+    records = _records(ac_code, part)
+    blank = [r for r in records if not (r.full_name or "").strip()]
+    # Non-vacuous: if the fix ever recovered this part entirely, this test
+    # would pass by having nothing to check, which is not the same as passing.
+    assert blank, "%s part %d is the control -- it must still refuse" % (
+        ac_code, part)
+
+    _, highest = _pua_gid_range(ac_code, part)
+    assert highest is not None, "a refused part still emits private-use glyphs"
+    assert highest > MAC_LATIN_MAX, (
+        "%s part %d blanks %d rows but no glyph reaches past the Latin run "
+        "(highest gid %s) -- the classifier has widened again and the remark "
+        "on those rows is false" % (ac_code, part, len(blank), highest))
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(RAW_DIR, "AC146.zip")),
+                    reason="raw data not downloaded")
+@pytest.mark.parametrize("ac_code,part", STILL_REFUSED + [("AC143", 5)])
+def test_no_row_is_blanked_without_saying_why(ac_code, part):
+    """A blank name always carries a remark naming its cause.
+
+    An undeclared blank is the failure mode with no handle on it: nothing
+    downstream can tell it from a genuinely nameless elector, and the row is
+    unfindable either way. Cheap to assert here and it covers the recovered
+    part too, where the answer is that there are no blanks left at all.
+    """
+    for r in _records(ac_code, part):
+        if not (r.full_name or "").strip():
+            assert (r.remark or "").strip(), (
+                "%s part %d serial %s is blank and says nothing about why"
+                % (ac_code, part, r.serial_no))
