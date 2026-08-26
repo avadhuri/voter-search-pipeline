@@ -246,3 +246,24 @@ def test_lazy_row_backfill_treats_an_empty_string_the_same_as_null(tmp_path, mon
     assert touched == 1
     assert rows[0]["full_name_latin"] == "Krishna"
     assert rows[1]["full_name_latin"].startswith("kRRi")
+
+
+def test_needs_latin_bridge_is_a_fact_about_the_string_not_the_state():
+    """The per-row counterpart to the registry's per-state `script`. West
+    Bengal is registered script='bengali' and holds Latin-typeset ACs; a
+    Latin name in it needs no romanized column, and counting it as missing
+    one turned the servability gate red for 2M perfectly servable rows."""
+    assert tl.needs_latin_bridge("সন্তোষ")
+    assert tl.needs_latin_bridge("सुभाष")
+    assert not tl.needs_latin_bridge("RAMESH KUMAR")
+    assert not tl.needs_latin_bridge("A. K. GHOSH")
+    assert not tl.needs_latin_bridge("")
+    assert not tl.needs_latin_bridge(None)
+
+
+def test_is_latin_query_and_needs_latin_bridge_cannot_drift():
+    """They are the same predicate asked from two sides, so one is defined
+    in terms of the other rather than repeating the regex."""
+    for text in ("সন্তোষ", "सुभाष", "RAMESH KUMAR", "কলকাতা 12", "12345"):
+        assert tl.is_latin_query(text) is (
+            not tl.needs_latin_bridge(text))

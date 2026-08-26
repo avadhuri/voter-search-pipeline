@@ -170,13 +170,14 @@ def test_a_script_with_no_romanization_scheme_at_all_is_reported(tmp_path, monke
     assert "native-script characters" in _messages(path, "WARNING")
 
 
-def test_a_latin_registered_state_carrying_latin_columns_warns(tmp_path, monkeypatch):
-    """The other direction, and the likelier mistake: a connector that
-    extracted both scripts but left script='latin' in the registry. Nothing
-    fails -- script='latin' is exactly what stops the backfill running, so
-    the state's other rows silently never get a Latin key."""
+def test_a_latin_name_carrying_a_latin_column_warns(tmp_path, monkeypatch):
+    """The other direction: a row whose name a Latin query can already type,
+    carrying a romanized copy of itself. Nothing fails -- the row serves
+    fine -- but it means the backfill ran over rows it had no work to do on.
+    Per-row like the blocker above, for the same reason: on a mixed state
+    the state's own `script` says nothing about any particular row."""
     path = _build(tmp_path, monkeypatch, full_name_latin="Ramesh Kumar")
-    assert "registered script='latin'" in _messages(path, "WARNING")
+    assert "duplicates it" in _messages(path, "WARNING")
 
 
 def test_residue_from_an_incomplete_romanization_is_reported(tmp_path, monkeypatch):
@@ -317,3 +318,81 @@ def test_a_name_the_scheme_could_not_romanize_is_marked_in_the_view(tmp_path, ca
     out = capsys.readouterr().out
     assert "residue: ൻ" in out
     assert "NO full_name_latin" in out
+
+
+# --- a state whose ACs are not all in one script ---------------------------
+
+class _MixedConnector(_Connector):
+    """Two ACs in one state, one Latin-typeset and one Bengali-typeset.
+
+    Not hypothetical: West Bengal's ~19 Kolkata ACs ship a Latin text layer
+    and its other ~265 ship Shree-Lipi Bengali, in one state, permanently.
+    """
+
+    state_id = "faketest"
+
+    def list_constituencies(self):
+        return [
+            Constituency(ac_code="A001", ac_name="Latin AC", district="D"),
+            Constituency(ac_code="A002", ac_name="Bengali AC", district="D"),
+        ]
+
+    def parse_raw(self, raw, ac, roll_year):
+        latin = ac.ac_code == "A001"
+        base = dict(
+            state=self.state_id, district=ac.district, ac_code=ac.ac_code,
+            ac_name=ac.ac_name, part_no=1, local_ref="", relation_code="F",
+            age=30, gender="M", roll_year=roll_year,
+            full_name="Ramesh Kumar" if latin else "সন্তোষ",
+            full_relative_name="Suresh Kumar" if latin else "সুভাষ",
+        )
+        return [VoterRecord(serial_no=1, **base), VoterRecord(serial_no=2, **base)]
+
+
+def _build_mixed(tmp_path, monkeypatch):
+    """A mixed state built with its latin columns never filled -- the real
+    shape of a file built while the state was still registered
+    script='latin', which is how every currently-served West Bengal AC file
+    was built."""
+    monkeypatch.setattr(
+        build_db, "resolve_source_url", lambda r: "https://example.invalid/roll.pdf")
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "A001.csv").write_text("placeholder\n")
+    (raw_dir / "A002.csv").write_text("placeholder\n")
+    monkeypatch.setitem(build_db.STATE_CONNECTORS, "faketest", {
+        "connector_cls": _MixedConnector, "label": "Faketest",
+        "raw_dir": str(raw_dir), "raw_glob": "*.csv", "script": "bengali",
+    })
+    db_path = tmp_path / "mixed.sqlite"
+    build_db.build_multi_state(["faketest"], str(db_path))
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("UPDATE voters SET full_name_latin = '', full_relative_name_latin = ''")
+    conn.commit()
+    conn.close()
+    return str(db_path)
+
+
+def test_only_the_rows_that_need_romanizing_are_counted_as_missing_it(tmp_path, monkeypatch):
+    """The bug this replaces: the check asked the *state* whether a Latin
+    column was needed, so registering West Bengal as script='bengali' -- which
+    it is, for ~265 of its ACs -- turned the gate red for all 2,054,521 rows
+    of its Latin-typeset ones. Those rows hold no Indic characters; a Latin
+    name needs no romanization, and the gate was blocking on rows that were
+    perfectly servable."""
+    path = _build_mixed(tmp_path, monkeypatch)
+    blockers = _messages(path, "BLOCKER")
+    assert "no full_name_latin" in blockers
+    # Two rows need it (the Bengali AC), two do not (the Latin AC).
+    assert "2 named rows" in blockers
+
+
+def test_a_latin_ac_inside_a_non_latin_state_is_servable_on_its_own(tmp_path, monkeypatch):
+    """The same fact stated the way the gate is actually used: point it at
+    only the Latin ACs of a non-Latin state and it must come back clean."""
+    path = _build_mixed(tmp_path, monkeypatch)
+    conn = sqlite3.connect(path)
+    conn.execute("DELETE FROM voters WHERE ac_code = 'A002'")
+    conn.commit()
+    conn.close()
+    assert "full_name_latin" not in _messages(path, "BLOCKER")
