@@ -650,36 +650,31 @@ def _part_no_of(member):
     return int(m.group(1)) if m else None
 
 
-# The three kinds of part PDF this state ships, as parse_raw() dispatches on
-# them. Named rather than inferred so that no path is ever reached by another
-# one failing: a scan run through the glyph decoder, or a Shree-Lipi part run
-# through the OCR responses, does not raise -- it yields confident wrong
-# names, which is the one failure this connector cannot notice downstream.
-LAYER_SCANNED = "scanned"      # no text layer at all -- pixels (AC287/291/294)
-LAYER_PUA = "pua"              # glyph ids with no Unicode meaning of their own
-LAYER_LATIN = "latin"          # text that is already text (the Kolkata ACs)
+def _has_text_layer(pdf_bytes):
+    """Whether a part PDF carries extractable text at all, read off the file.
 
+    This is the whole of what parse_raw() needs, and deliberately the whole of
+    what this answers. A part with text goes to the glyph/Shree-Lipi path and
+    one without goes to the stored OCR responses; naming the two rather than
+    inferring them keeps either from being reached by the other failing, which
+    is the one failure this connector cannot notice downstream -- a scan run
+    through the glyph decoder yields confident wrong names, not an error.
 
-def _text_layer(pdf_bytes):
-    """Which of the three a part PDF is, read off the file itself.
+    It used to also report Latin-vs-PUA, and that second answer was never safe
+    to give per AC: AC025 and AC026 are mixed, most of their parts Shree-Lipi
+    Bengali and a minority not (see looks_like_shreelipi()). The authority on
+    which a given part is belongs in _parse_part(), per part, and stays there.
+    Both callers already routed the two identically, so the distinction was
+    inert -- and inert is the hazard, not the reassurance: it is a predicate
+    whose meaning moves under any change to what decodes cleanly, waiting for
+    someone to make it load-bearing on the strength of its name.
 
-    Asked of an AC's first part. Cheap on the two typeset cases: the loop
-    stops at the first page carrying characters, which for a typeset roll is
-    page one. A scan costs a full pass over its 12-28 pages, once per AC.
-
-    LATIN vs PUA is decided here for the dispatch only. The *authority* on
-    which of the two a given part is stays in _parse_part(), per part, because
-    AC025 and AC026 are mixed -- most of their parts are Shree-Lipi Bengali
-    and a minority are not (see looks_like_shreelipi()). An AC-wide answer
-    would be wrong for those two; what is safely AC-wide is only whether
-    there is a text layer at all, and that is what the routing turns on.
+    Asked of an AC's first part. Cheap on a typeset roll: the loop stops at the
+    first page carrying characters, which is page one. A scan costs a full pass
+    over its 12-28 pages, once per AC.
     """
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            if page.chars:
-                text = page.extract_text() or ""
-                return LAYER_PUA if _has_undecoded(text) else LAYER_LATIN
-    return LAYER_SCANNED
+        return any(page.chars for page in pdf.pages)
 
 
 
@@ -933,8 +928,8 @@ class WestBengalConnector(StateConnector):
         applies to it: its rows come from a Cloud Vision response fetched
         earlier and stored on disk, reassembled from word geometry rather than
         extracted (see _parse_scanned and states/west_bengal_ocr.py). Which of
-        the three a download is gets decided once, up front, by _text_layer --
-        never by one path failing into the next.
+        the two a download is gets decided once, up front, by _has_text_layer
+        -- never by one path failing into the next.
         """
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             members = sorted(zf.namelist())
@@ -942,21 +937,15 @@ class WestBengalConnector(StateConnector):
                 raise UnparseableRollError(
                     f"{ac.ac_code}: the downloaded ZIP holds no part PDFs"
                 )
-            layer = _text_layer(zf.read(members[0]))
-            if layer == LAYER_SCANNED:
+            if not _has_text_layer(zf.read(members[0])):
                 return self._parse_scanned(ac, roll_year, members)
-            if layer in (LAYER_PUA, LAYER_LATIN):
-                return self._parse_typeset(zf, members, ac, roll_year)
-            raise UnparseableRollError(
-                f"{ac.ac_code}: part PDFs are none of the three kinds this "
-                f"connector reads (got {layer!r})"
-            )
+            return self._parse_typeset(zf, members, ac, roll_year)
 
     def _parse_typeset(self, zf, members, ac, roll_year):
         """Every row of an AC whose PDFs have a text layer, Latin or PUA.
 
         Both cases run the same extraction; which one a *part* is is decided
-        inside _parse_part(), not here -- see _text_layer().
+        inside _parse_part(), not here -- see _has_text_layer().
         """
         records, dropped = [], []
         for member in members:
