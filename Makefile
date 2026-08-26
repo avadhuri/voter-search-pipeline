@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-vision build-db build-db-ac check-servable sample-names push-ac-db-dev roll-years migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-vision build-db build-db-ac check-servable decoder-oracle sample-names push-ac-db-dev roll-years migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -197,6 +197,31 @@ build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; ACS=AC1,AC2
 # file's push discipline exists to avoid.
 state_flag = $(if $(STATES),--state $(STATES),$(if $(STATE),--state $(STATE),))
 
+# An independent check on the West Bengal Shree-Lipi glyph table, built
+# because the metric we had -- the unmapped-glyph rate -- is structurally
+# blind to the failure that kept recurring: a glyph that HAS a table entry
+# and the entry is wrong. Renders pages locally from the embedded font with
+# Ghostscript, has Google Vision read the PIXELS, and diffs that against
+# decode() for the same cells, attributing every disagreement to a glyph id.
+# Reads pixels, never a text layer -- a Shree-Lipi PDF has one, and it is the
+# very encoding under test, so OCR'ing the PDF would hand our own claim back.
+# Costs about a dollar for a few hundred pages; --dry-run prices it first.
+# Needs `gcloud auth application-default login` and Ghostscript.
+# RAW= rather than RAW_DIR=: RAW_DIR is already this file's state-agnostic
+# data/raw, so an $(if $(RAW_DIR),...) default here can never fire and the
+# oracle would silently scan a directory holding no AC zips at all.
+decoder-oracle: ## Audit the WB Shree-Lipi glyph table against Vision OCR (PAGES=, RAW=, DRY_RUN=1)
+	$(PY) -m decoder_oracle \
+	  --raw-dir $(if $(RAW),$(RAW),$(WB_RAW_DIR)) \
+	  --out $(if $(OUT),$(OUT),data/oracle) \
+	  $(if $(PAGES),--pages $(PAGES),) \
+	  $(if $(DPI),--dpi $(DPI),) \
+	  $(if $(SEED),--seed $(SEED),) \
+	  $(if $(PROJECT),--project $(PROJECT),) \
+	  $(if $(ENGINE),--engine $(ENGINE),) \
+	  $(if $(DRY_RUN),--dry-run,) \
+	  $(if $(REPORT_ONLY),--report-only,)
+
 check-servable: ## Check built data is actually servable (PATH_= to override, STATES=a,b)
 	@test "$(CHECK)" != "0" || { echo "check-servable skipped (CHECK=0)"; exit 0; }; \
 	$(PY) -m check_servable $(if $(PATH_),$(PATH_),$(AC_DB_LOCAL_DIR)) $(state_flag)
@@ -276,3 +301,20 @@ test: ## Run pytest (two pre-existing failures are known -- see README)
 
 clean: ## Remove the venv and all downloaded/built data
 	rm -rf $(VENV) $(DB_DIR) $(RAW_DIR)
+
+# The oracle above is a SAMPLING instrument scored against a paid external
+# reader, and it is nearly blind to seating bugs: the two decoder fixes of
+# round six moved its aggregate disagreement by one cell out of 6,536 while
+# this census moved word-initial rephas from 19 to 0 across 889,050 tokens.
+# An aggregate similarity metric cannot detect a regression that improves the
+# aggregate. This one is exhaustive over what it scans, needs no network and
+# no API key, and checks a property Bengali makes impossible to violate, so
+# run it first and spend the oracle's money only on what it cannot see.
+# STRIDE=1 PARTS=8 scans the whole corpus instead of the default sample.
+wb-decode-census: ## Check the WB decoder against what Bengali forbids word-initially (STRIDE=, PARTS=, RAW=)
+	$(PY) -m wb_decode_census \
+	  --raw-dir $(if $(RAW),$(RAW),$(WB_RAW_DIR)) \
+	  $(if $(STRIDE),--stride $(STRIDE),) \
+	  $(if $(PARTS),--parts $(PARTS),) \
+	  $(if $(STRICT),--strict,) \
+	  $(if $(JSON),--json $(JSON),)
