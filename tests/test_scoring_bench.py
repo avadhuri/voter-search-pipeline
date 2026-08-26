@@ -18,23 +18,44 @@ from bench_scoring import score_grouped, score_new, score_old, synthetic_tier
 # never in doubt. Minimum-of-N is the standard robust statistic here: noise only
 # ever adds time, so the fastest sample is the one least contaminated by it, and
 # a real regression (the paths at parity, or inverted) still fails because it
-# moves the floor, not just the spread.
+# moves the floor, not just the spread -- provided both floors are estimated
+# over the same stretch of machine time, which is why the samples are
+# interleaved rather than taken in two blocks (see _interleaved_ms).
 TIMING_SAMPLES = 5
 
 
-def _samples_ms(fn, samples=TIMING_SAMPLES):
-    """Every sample's wall-clock run of `fn`, in milliseconds."""
-    out = []
-    for _ in range(samples):
-        t0 = time.perf_counter()
-        fn()
-        out.append((time.perf_counter() - t0) * 1000)
+def _interleaved_ms(first, second, samples=TIMING_SAMPLES):
+    """Wall-clock samples of two callables, alternated rather than taken as
+    two consecutive blocks. Returns (first_samples, second_samples).
+
+    Best-of-N is robust to noise *within* a measurement window and not at all
+    to a shift *between* windows -- a gap in the original reasoning here, not
+    a subtlety of it. Sampling one path five times and then the other five
+    times makes each minimum an estimate of a different few seconds of
+    machine time, so a load transient covering only the second block raises
+    only that block's floor and inverts the comparison without ever
+    violating "noise only adds time". It just adds it to one side.
+
+    That is the most plausible surviving account of the one unexplained
+    failure recorded on the grouped test below: the full-corpus scans this
+    machine runs are bursty, which fits both the inversion and the fact that
+    *steady* external load never reproduced it. It is not a demonstrated
+    cause, and this is not a fix for a diagnosed bug -- it removes a way the
+    measurement could always have lied, whether or not that is what happened.
+
+    Alternating costs nothing: both estimates now see the same load
+    trajectory, so a transient has to hit both or neither. The order flips
+    each round so neither callable is permanently the one sampled a few
+    milliseconds earlier as load drifts through a round.
+    """
+    out = ([], [])
+    fns = (first, second)
+    for i in range(samples):
+        for j in (0, 1) if i % 2 == 0 else (1, 0):
+            t0 = time.perf_counter()
+            fns[j]()
+            out[j].append((time.perf_counter() - t0) * 1000)
     return out
-
-
-def _best_ms(fn, samples=TIMING_SAMPLES):
-    """Fastest of `samples` wall-clock runs of `fn`, in milliseconds."""
-    return min(_samples_ms(fn, samples))
 
 
 def _report(label, samples):
@@ -82,13 +103,16 @@ def test_old_and_new_scoring_produce_identical_top50(rows, algorithm):
 
 def test_new_scoring_is_meaningfully_faster(rows):
     """Regression guard: the whole point of vectorizing is a real wall-clock
-    win, not just equivalent output. Best-of-N -- see _best_ms.
+    win, not just equivalent output. Best-of-N, interleaved -- see
+    _interleaved_ms.
 
     Both paths here are single-threaded, so unlike the grouped test below
     this one's premise does not depend on the machine having spare cores.
     """
-    old = _samples_ms(lambda: score_old(rows, "Ravi Kumar", "Anand Sharma", "wratio"))
-    new = _samples_ms(lambda: score_new(rows, "Ravi Kumar", "Anand Sharma", "wratio"))
+    old, new = _interleaved_ms(
+        lambda: score_old(rows, "Ravi Kumar", "Anand Sharma", "wratio"),
+        lambda: score_new(rows, "Ravi Kumar", "Anand Sharma", "wratio"),
+    )
 
     assert min(new) < min(old), (
         f"{_report('vectorized', new)} vs {_report('per-row', old)}; {_machine()}"
@@ -112,8 +136,10 @@ def test_grouped_scoring_is_meaningfully_faster_across_constituencies(multi_ac_r
     concurrency is across groups, so a single-AC tier gets no speedup by
     design (see its docstring).
 
-    A note for whoever sees this fail, because it has once (452ms grouped
-    against 425ms flat, best of five each) and the cause is not settled.
+    A note for whoever sees this fail, because it has once -- 452ms grouped
+    against 425ms flat, best of five each -- and **that single inversion
+    remains unexplained.** What follows is what was ruled out, not a
+    diagnosis.
 
     The obvious reading is a busy machine: the grouped path's only advantage
     is spare cores to fan out into, and scripts/bench_concurrency.py shows it
@@ -132,15 +158,20 @@ def test_grouped_scoring_is_meaningfully_faster_across_constituencies(multi_ac_r
     mostly just stop the test running. Loosening the assertion was likewise
     rejected: a gating test that tolerates an inversion is worse than one
     that occasionally cannot run, and the inversion is precisely the thing
-    worth hearing about. What changed instead is that a failure now carries
-    every sample and the machine's state, so the next one can be diagnosed
-    rather than merely repeated.
+    worth hearing about.
+
+    Two things changed instead. A failure now carries every sample and the
+    machine's state, so the next one can be diagnosed rather than merely
+    repeated. And the two paths' samples are interleaved, which closes the
+    one route by which best-of-N could have produced that inversion without
+    anything being wrong with the code -- a load transient landing on the
+    second of two consecutive measurement blocks. That is a plausible
+    account rather than a demonstrated one; if the inversion recurs under
+    interleaving it is real, and this docstring should say so.
     """
-    flat = _samples_ms(
-        lambda: score_new(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio")
-    )
-    grouped = _samples_ms(
-        lambda: score_grouped(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio")
+    flat, grouped = _interleaved_ms(
+        lambda: score_new(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio"),
+        lambda: score_grouped(multi_ac_rows, "Ravi Kumar", "Anand Sharma", "wratio"),
     )
 
     assert min(grouped) < min(flat), (
