@@ -879,8 +879,12 @@ class WestBengalConnector(StateConnector):
         That also leaves `locality` empty: this roll prints the village/town
         on the cover, and an unread cell is left empty rather than inferred.
 
-        `age` is always None, and that is the parser's decision, not a
-        parse failure -- see states/west_bengal_ocr.py's module docstring.
+        `age` is stored only when its token arrived entirely in Bengali
+        numerals and lands in 18..120, and is None otherwise -- on 21.5% of
+        rows, which is a parser decision and not a parse failure. Why
+        arrival script is the test is states/west_bengal_ocr.py's module
+        docstring; the row's own `remark` says which of the two rules
+        dropped it.
         """
         return VoterRecord(
             state=self.state_id,

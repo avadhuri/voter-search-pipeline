@@ -12,6 +12,7 @@ So each test here *produces* that breakage in a real built DB and asserts
 the checker names it. A test that only asserted "clean data passes" would
 have passed against every one of the four gaps this round of work found.
 """
+import collections
 import sqlite3
 
 import pytest
@@ -209,6 +210,136 @@ def test_an_unusable_age_is_reported_as_informational(tmp_path, monkeypatch):
     path = _build(tmp_path, monkeypatch, age=0)
     assert _findings(path, "BLOCKER") == []
     assert "no usable age" in _messages(path, "WARNING")
+
+
+# --- the shape of the age column -------------------------------------------
+#
+# The one check here that reads a distribution rather than a row. It exists
+# because West Bengal's scanned ACs shipped an age column that was wrong by
+# decades on a fifth of its rows while every other signal was clean -- the
+# rows parsed, the counts were right, the search-quality suite was green, and
+# Cloud Vision's own per-symbol confidence was flat across the correct and
+# the incorrect readings alike. What gave it away was that the roll held more
+# electors in their 80s (5.89 percent) than in their 70s (1.85 percent),
+# which no population does.
+
+# The real histograms, read off six built per-AC files -- three Haryana ACs
+# from Devanagari PDFs, three West Bengal ACs from a Latin text layer. Kept
+# as a fixture rather than recomputed because they are the evidence
+# AGE_MONOTONE_FROM was chosen from, and a constant whose justification isn't
+# written down is a constant nobody can safely change.
+REAL_AGE_HISTOGRAMS = {
+    "haryana/HR02": {10: 4160, 20: 31847, 30: 28589, 40: 21918, 50: 13169,
+                     60: 7869, 70: 6382, 80: 1920, 90: 348, 100: 36},
+    "haryana/HR20": {10: 5607, 20: 31384, 30: 30389, 40: 22490, 50: 12491,
+                     60: 7404, 70: 5724, 80: 1644, 90: 266, 100: 30},
+    "haryana/HR22": {10: 8114, 20: 41927, 30: 38702, 40: 27997, 50: 15486,
+                     60: 8163, 70: 6262, 80: 1681, 90: 300, 100: 41},
+    "west_bengal/AC141": {10: 1617, 20: 14873, 30: 21331, 40: 17827, 50: 11573,
+                          60: 7173, 70: 3443, 80: 827, 90: 90, 100: 5},
+    "west_bengal/AC142": {10: 1830, 20: 17018, 30: 23496, 40: 19288, 50: 11429,
+                          60: 6660, 70: 3196, 80: 591, 90: 64, 100: 4},
+    "west_bengal/AC160": {10: 2606, 20: 24944, 30: 32223, 40: 25699, 50: 17060,
+                          60: 9972, 70: 4629, 80: 1037, 90: 125, 100: 12},
+}
+
+
+def _aged_db(tmp_path, histogram, name="aged.sqlite"):
+    """A voters table holding `histogram` electors, everything else clean.
+
+    Built by hand rather than through the shared _Connector, which emits two
+    identical rows -- right for a row-level check, useless for a
+    distribution.
+    """
+    path = str(tmp_path / name)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE voters (state TEXT, district TEXT, ac_code TEXT, "
+        "ac_name TEXT, part_no INTEGER, serial_no INTEGER, full_name TEXT, "
+        "full_relative_name TEXT, age INTEGER, roll_year INTEGER, "
+        "source_url TEXT, full_name_latin TEXT)")
+    rows, serial = [], 0
+    for decade, count in sorted(histogram.items()):
+        for i in range(count):
+            serial += 1
+            rows.append(("faketest", "Fake District", "A001", "Fake AC", 1,
+                         serial, "Ramesh Kumar", "Suresh Kumar",
+                         decade + (i % 10), 2002,
+                         "https://example.invalid/r.pdf", ""))
+    conn.executemany(
+        "INSERT INTO voters VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    return path
+
+
+def test_every_real_state_already_has_the_falling_tail():
+    """The invariant has to be one real data already satisfies, or it is a
+    check that gets switched off the first time it fires."""
+    for label, histogram in REAL_AGE_HISTOGRAMS.items():
+        assert check_servable._falling_tail_violations(histogram) == [], label
+
+
+def test_the_check_starts_above_the_decades_that_genuinely_differ():
+    """Below middle age the shape is demography and it varies by state: HR02
+    holds more electors in their 20s than their 30s, AC141 the other way
+    round. Both are real rolls, so the invariant cannot start there."""
+    assert (REAL_AGE_HISTOGRAMS["haryana/HR02"][20]
+            > REAL_AGE_HISTOGRAMS["haryana/HR02"][30])
+    assert (REAL_AGE_HISTOGRAMS["west_bengal/AC141"][30]
+            > REAL_AGE_HISTOGRAMS["west_bengal/AC141"][20])
+    assert check_servable.AGE_MONOTONE_FROM > 30
+
+
+def test_more_electors_in_their_80s_than_their_70s_is_named_as_the_violation():
+    histogram = dict(REAL_AGE_HISTOGRAMS["west_bengal/AC141"])
+    histogram[80] = histogram[70] * 3
+    violations = check_servable._falling_tail_violations(histogram)
+    assert [(y, o) for y, o, _, _ in violations] == [(70, 80)]
+
+
+def test_a_tail_too_thin_to_read_ends_the_walk_rather_than_failing():
+    """At a few dozen rows the order of two adjacent decades is chance. A
+    check that fires on noise is a check people learn to ignore."""
+    thin = {50: 20000, 60: 8000, 70: 3000,
+            80: check_servable.AGE_DECADE_FLOOR - 1, 90: 400}
+    assert check_servable._falling_tail_violations(thin) == []
+    # ... but fatten the same two decades and the same inversion is caught:
+    # what ends the walk is the thinness, not the depth in the tail.
+    thick = {**thin, 70: 6000, 80: 4000, 90: 9000}
+    assert [(y, o) for y, o, _, _ in
+            check_servable._falling_tail_violations(thick)] == [(80, 90)]
+
+
+def test_a_state_with_no_ages_at_all_reports_that_and_not_a_broken_shape():
+    assert check_servable._falling_tail_violations({}) == []
+    assert check_servable._falling_tail_violations(collections.Counter()) == []
+
+
+def test_the_misread_age_column_blocks_the_push(tmp_path):
+    """End to end, through the real checker: the histogram West Bengal's
+    scanned ACs actually shipped, against the one they ship now."""
+    broken = _aged_db(tmp_path, {20: 30000, 30: 25000, 40: 15000, 50: 9000,
+                                 60: 5000, 70: 1850, 80: 5890, 90: 300},
+                      name="broken.sqlite")
+    message = _messages(broken, "BLOCKER")
+    assert "more electors aged 80-89 (5890) than 70-79 (1850)" in message
+    assert check_servable.main([broken]) == 1
+
+    fixed = _aged_db(tmp_path, {20: 30000, 30: 25000, 40: 15000, 50: 9000,
+                                60: 5000, 70: 1850, 80: 310, 90: 30},
+                     name="fixed.sqlite")
+    assert "more electors aged" not in _messages(fixed, "BLOCKER")
+
+
+def test_the_top_decade_is_one_bucket_so_the_tail_is_not_split_into_noise(tmp_path):
+    """Ages past 100 are mostly extraction damage in any state. Bucketing
+    them together is what keeps a handful of 104s and 117s from reading as
+    an inverted tail."""
+    path = _aged_db(tmp_path, {50: 9000, 60: 5000, 70: 1850, 80: 310, 90: 30,
+                               100: 6, 110: 9}, name="centenarian.sqlite")
+    assert "more electors aged" not in _messages(path, "BLOCKER")
+    assert check_servable._decade_label(check_servable.AGE_TOP_DECADE) == "100+"
 
 
 # --- the CLI contract ------------------------------------------------------

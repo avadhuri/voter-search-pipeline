@@ -19,31 +19,117 @@ square on the platen), but every data row contains exactly one of
 fields the app actually searches. Splitting on it costs nothing when a scan
 is skewed.
 
-**No age is stored from a scanned AC.** Vision transcribes some Bengali
-numerals as the Latin numerals they resemble, and an earlier version of this
-module trusted the Bengali-read ages and dropped only the Latin-read ones.
-Measurement retired that split. A confusion matrix over 73 digit pairs (the
-serial column, whose true values are known from its own consecutiveness) has
-৩ coming back as 3 only 54% of the time and as 6 or 8 the rest, and ৪ as 8
-more often (59%) than as 4 (39%) -- and, decisively, the errors are *visual*,
-not script-dependent: serials read in Bengali are monotonically increasing
-down the page 92.5% of the time against 89.7% for serials read in Latin.
-Which script a token came back in is therefore no evidence that it is right,
-so dropping the Latin ones removed a visible sample of an error equally
-present in the ages that were kept.
+**An age is stored only when its token arrived entirely in Bengali
+numerals and lands in 18..120.** That rule replaces a blanket "store no age",
+which this module carried from `d8bbc0c` until the evidence under it was
+rebuilt and did not survive.
 
-An age that is wrong but plausible is worse than no age at all here: the
-search form's year-of-birth field is *required*, so a ৩->6 misread moves an
-elector three decades and no one looking for them can find them, while
+What `d8bbc0c` concluded, and why it was wrong: it read a confusion matrix
+built over **73 digit pairs** and found ৩ coming back as 3 only 54% of the
+time and ৪ as 4 only 39%, then reasoned from a monotonicity proxy -- serials
+read in Bengali run in increasing order down a page 92.5% of the time
+against 89.7% for serials read in Latin -- that the errors were *visual*
+rather than script-dependent, so that Bengali-read ages were no safer than
+Latin-read ones and all of them had to go.
+
+The same matrix rebuilt over **38,896 serial tokens / 79,844 digit
+comparisons** says the opposite, and misses the old figures by 30-40 points:
+৩->3 is right 93.4% of the time, not 54%, and ৪->4 86.8%, not 39%.
+
+**Arrival script is the load-bearing variable, and it is the one thing the
+old reading ruled out.** Conditioned on it:
+
+    Bengali-arriving digits   99.27-99.60% correct, at every value
+    Latin-arriving "8"         5.28% correct
+    Latin-arriving "9"        43.90%
+    Latin-arriving "6"        54.48%
+    Latin-arriving "0"        83.09%
+
+and every dangerous substitution is cross-script, not within-script:
+
+    true ৪ read as 8    976 Latin,   0 Bengali
+    true ৩ read as 6    403 Latin,   2 Bengali
+    true ৭ read as 9    333 Latin,   3 Bengali
+    true ৫ read as 0    180 Latin,   0 Bengali
+
+Which is not a coincidence: ৪ and 8 are near-identical shapes, so Vision is
+reading the ink correctly and choosing the wrong numeral *system* for it.
+A token that came back in Bengali is one where that choice went the right
+way, for every digit in it.
+
+*Hypothesis* for why the monotonicity proxy could not see this (the
+refutation above does not rest on it, and it is untested): monotonicity
+compares orderings, not values. A substitution that preserves order --
+every ৪ on a page becoming 8 -- leaves the page perfectly monotone while
+every value on it is wrong.
+
+**The check that does not depend on the instrument under dispute.** A
+confusion matrix is itself a thing this module built, and a wrong one is
+what produced `d8bbc0c`. So: read every age unfiltered and bin it by decade.
+The result puts **more electors in their 80s (5.89%) than in their 70s
+(1.85%)**, which cannot happen on a real roll -- past middle age a roll's
+age histogram falls, and mortality is why. Restricting to Bengali-arriving
+tokens takes 80-89 from 5.89% to 0.31%, in line with the digitally-typeset
+ACs of the same roll. 53.23% of Latin-containing age tokens land in 80-89,
+the same finding from the other side. `scripts/check_servable.py` now
+enforces that falling tail on every state built, so this stays a check
+rather than a measurement someone once ran.
+
+**Vision's own confidence does not separate the two populations** -- a
+negative result, recorded so nobody spends a day on it. Accuracy is 92.53%
+at 100% coverage and 93.18% over the most-confident 22%: flat, and not even
+monotone. The physical reason is the same one as above. The engine is
+confident because it read the pixels correctly; its error is about which
+numeral system those pixels belong to, and nothing in a per-symbol
+confidence score is measuring that.
+
+**What the surviving error looks like.** Over two-digit all-Bengali tokens
+(an age's shape), n=2,408: 93.85% exactly right, 4.94% wrong in the tens
+position. Per tens digit, tens 1/2/3/4/6/7/8 recorded **0 errors in 1,700
+samples between them** -- which is not 100%; with no errors observed the
+95% upper bound is roughly 3/n, and it is quoted that way below rather than
+as a perfect score. Tens 5 is 99.08% and tens 9 is 69.55%.
+
+Weighting each tens digit by how often a real elector's age starts with it
+gives a **0.14% decade-error rate on stored ages**, with a pooled 95% upper
+bound near 0.29% (about 1.6% if the tens digits are not pooled at all).
+Tens 9 is bad but nearly weightless: 90-99 is 0.11% of this roll.
+
+The 18 floor does most of the remaining work, for a reason worth stating.
+The one substitution that survives within Bengali is ৯->১, so a true 9X
+reads as 1X -- and 10..17 is outside the bound, so **74% of observed decade
+errors are rejected rather than stored**. Only true 98/99 -> 18/19 gets
+through. The ceiling is doing something different: it drops tokens that are
+not ages at all (a column-rule fragment, a part number), 839 of 50,279
+sampled rows.
+
+An age that is wrong but plausible is worse than no age at all here -- the
+search form's year-of-birth field is *required*, so a decade-sized error
+moves an elector out of reach of the person looking for them, while
 `age IS NULL` is already spared by the query (CLAUDE.md, "An unusable age
-means 'unknown', never 'not your match'"). The age token is still located --
-it has to be, or it lands in the relative's name -- and then discarded.
+means 'unknown', never 'not your match'"). That is why the rule is
+conservative in one direction only: everything it is not sure of becomes
+NULL. Coverage is **78.79%** of rows overall and varies by AC -- 87.37%
+AC287, 72.20% AC291, 77.17% AC294 -- against 0% before. Those are counted
+by replaying every cached Vision response for all 583 parts through this
+module and asking how many of the 407,386 rows come back with a non-NULL
+age; the method is written down because the figure it replaces (78.54%,
+87.55/71.05/76.85) is one whose own method can no longer be reconstructed,
+which is the only reason it went unnoticed that the corpus had moved
+underneath it.
 
-The blank is uniform across every row of every scanned AC, so it earns no
-per-row remark; that would say nothing about the row it was stamped on and
-would drown the remarks that do. Only an age token that could not be *found*
-gets one ("age not read"), because then nothing was trimmed and the
-relative's name may carry the leftovers.
+A token that could not be *found* still gets an "age not read" remark,
+because then nothing was trimmed and the relative's name may carry the
+leftovers. A token that was found and then rejected gets a remark naming
+which rule rejected it, so the two are countable apart.
+
+**18 is also voter_search_engine's `MIN_ELECTOR_AGE`** (`scripts/app.py`),
+which its year-of-birth filter uses to decide that an age is unusable and
+the row must be spared rather than hidden. Two repos, one number, and
+nothing mechanical keeping them in step across the open-source split.
+Changing either one means looking for the other. The precedent is the
+2002-roll birth-year incident: the bug was never the constant, it was that
+nothing tied the constant to the data it described.
 """
 from __future__ import annotations
 
@@ -71,6 +157,19 @@ EPIC_WHOLE = re.compile(r"^[A-Z]{3}\d{7}$")
 
 # One to three digits in either script -- the age column.
 AGE_SHAPE = re.compile(r"^(?:[০-৯]{1,3}|\d{1,3})$")
+
+# The window an age token has to land in to be stored. Below the floor the
+# elector could not have been enrolled; above the ceiling the token is not an
+# age at all (a column-rule fragment, a part number). Both bounds are only
+# reached for tokens that already arrived in Bengali numerals -- see the
+# module docstring for why arrival script is the load-bearing test and these
+# two are the backstop. MIN_ELECTOR_AGE is also a constant in
+# voter_search_engine (`scripts/app.py`), where the year-of-birth filter uses
+# it to spare a row rather than hide it; the two are not shared across the
+# open-source split and nothing keeps them in step, so changing one means
+# going to look for the other.
+MIN_ELECTOR_AGE = 18
+MAX_ELECTOR_AGE = 120
 
 # Fraction of a word's own height that its baseline may sit away from the
 # word the row currently ends at. Swept against three real parts: 0.6 leaves
@@ -364,28 +463,37 @@ def parse_row(tokens: list[str]) -> dict | None:
     # Bengali first, and only then Latin: the stray fragments a scan picks up
     # off the column rule are Latin far more often than Bengali, so "rightmost
     # number" alone let a stray "2" outrank the real "৪৬" sitting beside it.
-    # Always None on this roll -- see below. Kept as a field so the OCR rows
-    # and the digitally-typeset ones stay the same shape.
     age = None
     at = next((i for i in range(len(tail) - 1, -1, -1)
                if bengali_int(tail[i]) is not None), None)
+    bengali = at is not None
     if at is None:
         at = next((i for i in range(len(tail) - 1, -1, -1)
                    if AGE_SHAPE.match(tail[i])), None)
-    if at is not None:
-        # The token still has to be *located*, or it lands in the relative's
-        # name -- but its value is not stored. See the module docstring: the
-        # digit confusion measured here is visual (৩ read as 6, ৪ as 8), so it
-        # is present in Bengali-read tokens too, not only in the Latin ones
-        # it is visible in, and a decade-sized error in a column the search
-        # form *requires* is an elector nobody can find. An age we cannot
-        # vouch for is recorded as unknown, which the search spares.
-        # No remark: a blank age is uniform across every row of every
-        # scanned AC, so stamping a cause on all of them would say nothing
-        # about *this* row and would drown the remarks that do.
-        tail = tail[:at]
-    else:
+    if at is None:
+        # Nothing was trimmed, so the leftovers may be sitting in the
+        # relative's name. That is a different failure from finding a token
+        # and refusing it, and the two are worth counting apart.
         remarks.append("age not read")
+    else:
+        token = tail[at]
+        # The token is trimmed off whether or not its value survives -- it
+        # has to be *located* either way, or it lands in the relative's name,
+        # which is a searched field.
+        tail = tail[:at]
+        value = bengali_int(token) if bengali else None
+        if not bengali:
+            # A Latin-arriving age token is the population the confusion
+            # matrix in the module docstring finds unusable: Vision read the
+            # ink correctly and picked the wrong numeral system for it, so
+            # the value is a plausible number that is not this elector's age.
+            remarks.append("age not read: Latin digits %r" % (token,))
+        elif not MIN_ELECTOR_AGE <= value <= MAX_ELECTOR_AGE:
+            remarks.append(
+                "age not read: %d outside %d..%d"
+                % (value, MIN_ELECTOR_AGE, MAX_ELECTOR_AGE))
+        else:
+            age = value
 
     if not epic:
         # Left deliberately without a cause: column 8 is genuinely blank for
