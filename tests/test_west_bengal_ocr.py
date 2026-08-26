@@ -127,7 +127,7 @@ def test_a_line_with_two_relation_words_is_rejected_rather_than_guessed():
 
 def test_the_roll_s_fourth_relation_code_is_read():
     # `অন্য` ("other") is the fourth code base.py has carried since
-    # Karnataka. Not reading it refused 296 otherwise-perfect rows across the
+    # Karnataka. Not reading it refused 297 otherwise-perfect rows across the
     # corpus -- every column present, the elector simply related to their
     # guardian rather than to a parent or spouse.
     row = parse_row(["১", "ক", "খ", "অন্য", "গ", "ঘ", "পুং", "৩৫"])
@@ -142,7 +142,7 @@ def test_the_fourth_code_never_outranks_a_kinship_term():
     `অন্য` is an ordinary word meaning "other", so unlike পিতা/স্বামী/মাতা it
     turns up inside names. Promoted to a peer it would make this row carry
     two relation words and be refused outright -- 3 real rows in the corpus,
-    against the 296 the fallback recovers. Here the row is related by
+    against the 297 the fallback recovers. Here the row is related by
     marriage and the word is part of the elector's name; the split has to
     happen at স্বামী.
     """
