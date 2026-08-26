@@ -125,3 +125,108 @@ def test_the_same_data_counted_per_row_would_have_manufactured_a_z_score():
     assert row["cells"] == 200
     assert row["z"] > 14.0, f"expected a manufactured z-score, got {row['z']:.1f}"
     assert row["z"] >= do.Z_FLAG and row["lift"] >= do.LIFT_FLAG
+
+
+# --------------------------------------------------- what the verdict claims
+
+GID_DHA = 222        # the real id from #36: 11 cells, 11 ACs, wrong in all 11
+GID_BROAD = 76       # ট, the real id from #37 that does clear the bar
+
+
+SAMPLE = {"seed": 0, "parts": 1, "pages": 1, "acs": 1, "districts": 1,
+          "skipped_font": 0, "dpi": 300, "engine": "fixture"}
+
+
+def _baseline(tally, n=400):
+    """Cells that agree, so the report has a corpus rate to stand against."""
+    for i in range(n):
+        tally.add(pua(GID_KA, GID_KA) + str(i), f"কক{i}", f"কক{i}", False,
+                  f"AC{i % 40:03d}/part{i:04d}.pdf")
+
+
+def _wrong_in_every_cell(tally, gid, n_acs, first_ac=100):
+    """One id, wrong in 100% of its cells, one cell per constituency.
+
+    Shaped on the real gid 222: 11 distinct names across 11 ACs, every one
+    of them losing the same ধ out of a conjunct.
+
+    The carrier glyph is the same one `_baseline` uses, deliberately. A
+    filler of its own would ride along in every disagreeing cell and clear
+    the bar itself -- breadth is counted over every gid PRESENT in the cell,
+    not only the blamed one -- and the fixture would then be testing an
+    artefact of its own construction.
+    """
+    for i in range(n_acs):
+        ac = f"AC{first_ac + i:03d}"
+        tally.add(pua(GID_KA, gid) + str(i), f"কধ{i}", f"কব{i}", False,
+                  f"{ac}/part0001.pdf")
+
+
+def test_an_id_wrong_in_every_cell_it_appears_in_clears_no_bar():
+    """The finding the verdict wording has to stop hiding.
+
+    Nothing here is marginal: the id is wrong every single time, in eleven
+    separate constituencies, at a lift of ~37 over the corpus. It clears
+    neither `flagged` nor `narrow`, because both require cells >= MIN_CELLS
+    and it has eleven. `narrow` is the report's own "ruled out" list, so the
+    id is not merely unflagged: there is no line in either verdict that
+    accounts for it. It can still surface as a row in the ranked residual
+    table, which is where #37's nine were found -- by reading the table, not
+    by the verdict saying anything.
+    """
+    tally = do.Tally()
+    _baseline(tally)
+    _wrong_in_every_cell(tally, GID_DHA, 11)
+
+    report = do.build_report(tally, {"seed": 0})
+    row = next(r for r in report["gids"] if r["gid"] == GID_DHA)
+    assert row["cells"] == 11 and row["disagreeing"] == 11
+    assert row["rate"] == 1.0
+    assert row["acs"] == 11, "wrong in eleven constituencies, not one"
+    assert row["z"] >= do.Z_FLAG and row["lift"] >= do.LIFT_FLAG
+
+    assert row["cells"] < do.MIN_CELLS
+    assert GID_DHA not in [r["gid"] for r in report["flagged"]]
+    assert GID_DHA not in [r["gid"] for r in report["narrow"]]
+
+
+def test_a_verdict_of_none_does_not_claim_the_table_is_clean(capsys):
+    """Same tally as above: nine real defects of this shape, verdict silent.
+
+    The old wording was "CONVERGED, on this evidence", printed while an id
+    wrong in 100% of its cells sat in the corpus. What the run actually
+    established is narrower and is now what it says.
+    """
+    tally = do.Tally()
+    _baseline(tally)
+    _wrong_in_every_cell(tally, GID_DHA, 11)
+    do.print_report(do.build_report(tally, SAMPLE))
+    out = capsys.readouterr().out
+
+    assert not report_claims_convergence(out)
+    assert "no glyph id is above the concentration threshold" in out
+    assert f"cells>={do.MIN_CELLS}" in out
+    assert "not defects" in out
+
+
+def test_a_verdict_of_two_is_not_a_claim_that_there_are_two_defects(capsys):
+    """The line ruling 1 was about, with the id that does clear the bar."""
+    tally = do.Tally()
+    _baseline(tally)
+    _wrong_in_every_cell(tally, GID_BROAD, 60, first_ac=200)
+    _wrong_in_every_cell(tally, GID_DHA, 11)
+
+    report = do.build_report(tally, SAMPLE)
+    assert [r["gid"] for r in report["flagged"]] == [GID_BROAD]
+
+    do.print_report(report)
+    out = capsys.readouterr().out
+    assert "1 glyph id(s) above the concentration threshold" in out
+    assert "own a concentration of the residual" not in out
+    assert not report_claims_convergence(out)
+    assert "not defects" in out
+
+
+def report_claims_convergence(out):
+    """The word carried the overstatement, so no verdict may still use it."""
+    return "CONVERGED" in out
