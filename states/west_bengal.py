@@ -668,6 +668,90 @@ def _report_dropped_pages(ac, n_parts, dropped):
     )
 
 
+RECOVERY_ISSUE = (
+    "vsp #52 (https://github.com/avadhuri/voter-search-pipeline/issues/52)"
+)
+
+
+class _PartHasNoPages(Exception):
+    """A part PDF pdfplumber opens and then reports as holding zero pages.
+
+    Its own type rather than a return value because it happens inside
+    _parse_part, one page-loop away from the caller that has to decide what an
+    unreadable part means, and because "opened, zero pages" and "raised on
+    open" are two ways of failing to read the same file -- they belong in the
+    same list, said differently.
+    """
+
+
+def _second_reader_says(pdf_bytes):
+    """What an independent PDF reader makes of bytes pdfminer refused.
+
+    Only ever called on a part that has already failed, and only to keep the
+    refusal from overclaiming -- see _unreadable_parts_message. pypdfium2 is a
+    cross-check, not a fallback, and deliberately not a declared dependency of
+    this package: reading rows out of a pdfium text page needs the font
+    identity the Shree-Lipi decode keys on, which its textpage API does not
+    expose (RECOVERY_ISSUE).
+
+    Its three outcomes stay three outcomes -- read it, could not read it, did
+    not run -- because collapsing "not installed here" into "unreadable" is
+    exactly how a message ends up asserting the thing it was written not to
+    assert. It runs against the bytes at refusal time, so it cannot go stale
+    the way a comment recording a one-off measurement would.
+    """
+    try:
+        import pypdfium2
+    except ImportError:
+        return "not cross-checked, pypdfium2 is not installed here"
+    try:
+        doc = pypdfium2.PdfDocument(io.BytesIO(pdf_bytes))
+        try:
+            pages = len(doc)
+        finally:
+            doc.close()
+    except Exception:
+        return "pdfium could not open it either"
+    return f"pdfium reads it at {pages} page(s)"
+
+
+def _unreadable_parts_message(ac, n_parts, unread):
+    """Why an AC with unopenable parts is absent, said without overclaiming.
+
+    Two things are true at once and this message has to keep them apart: this
+    connector could not read these parts, and that is not the same as the
+    parts being damaged. The first version of this refusal was specified as
+    the second -- of AC088 part0065 and part0068, which pdfium opens at 26 and
+    23 pages, and whose text layers begin with the same glyph-id sequence as
+    the control part beside them. Ordinary parts, ordinary legacy font, a
+    reader that cannot open them. A build log is the artifact a maintainer
+    trusts most, and "the roll is damaged" compiled into it is a claim about
+    the election commission's file that nothing downstream can re-check.
+
+    So it reports what each reader did, and names no verdict and no cause. The
+    AC is refused whole, following _parse_scanned's gap check: an AC built
+    from the parts that happen to open is short by exactly the electors nobody
+    would notice missing, and absent-with-a-reason is what keeps
+    state_coverage.acs_digitized an honest number.
+    """
+    shown = "; ".join(
+        f"{os.path.basename(member)} ({why}; {second})"
+        for member, why, second in unread[:5]
+    )
+    return (
+        f"{ac.ac_code} ({ac.ac_name}): this connector's PDF reader (pdfminer, "
+        f"via pdfplumber) could not open {len(unread)} of {n_parts} part(s) -- "
+        f"{shown}"
+        + (f" ... (+{len(unread) - 5} more part(s))" if len(unread) > 5 else "")
+        + f". That is a limit of the reader, not a verdict on the source -- "
+        f"recovering these parts is tracked as {RECOVERY_ISSUE}. The AC is "
+        f"absent from this build rather than built from the "
+        f"{n_parts - len(unread)} part(s) that do open, because an AC short by "
+        f"{len(unread)} part(s) is short by exactly the electors nobody would "
+        f"notice missing."
+    )
+
+
 def _part_no_of(member):
     """The part number a zip member name carries, or None.
 
@@ -983,14 +1067,39 @@ class WestBengalConnector(StateConnector):
 
         Both cases run the same extraction; which one a *part* is is decided
         inside _parse_part(), not here -- see _has_text_layer().
+
+        A part this connector cannot open does not end the build. Before this
+        guard, pdfminer raising out of pdfplumber.open on one part of one AC
+        propagated through _build_one_ac -- which catches UnparseableRollError
+        and, by an explicit decision recorded there, nothing else -- out
+        through the parent pool's fut.result(), and took down a 294-AC run of
+        every state at once.
+
+        The catch is deliberately broad. The only thing done with a failure is
+        to name it and refuse the AC, so a reader error this code has not seen
+        before is carried into the message rather than back into the traceback
+        that stopped the build -- and it cannot hide a short AC, because an AC
+        with an unreadable part is not built at all.
         """
-        records, dropped = [], []
+        records, dropped, unread = [], [], []
         for member in members:
-            records.extend(
-                self._parse_part(
-                    zf.read(member), ac, roll_year, _part_no_of(member), member,
-                    dropped,
+            blob = zf.read(member)
+            try:
+                records.extend(
+                    self._parse_part(
+                        blob, ac, roll_year, _part_no_of(member), member,
+                        dropped,
+                    )
                 )
+            except _PartHasNoPages:
+                unread.append((member, "opened, but reports 0 pages",
+                               _second_reader_says(blob)))
+            except Exception as exc:  # noqa: BLE001 -- see the docstring
+                unread.append((member, f"{type(exc).__name__}: {exc}",
+                               _second_reader_says(blob)))
+        if unread:
+            raise UnparseableRollError(
+                _unreadable_parts_message(ac, len(members), unread)
             )
         _report_dropped_pages(ac, len(members), dropped)
         return records
@@ -1087,6 +1196,12 @@ class WestBengalConnector(StateConnector):
         # most of their parts are Shree-Lipi Bengali and a minority are not.
         shreelipi = None
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            if not pdf.pages:
+                # A part with no pages is not an empty part -- every part of
+                # this roll prints a cover, a summary and at least one table.
+                # Returning [] would put that distinction beyond the caller's
+                # reach and build the AC short by a whole part.
+                raise _PartHasNoPages(member)
             for page in pdf.pages:
                 if shreelipi is None and page.chars:
                     text = page.extract_text() or ""
