@@ -14,10 +14,48 @@ off `normalizedVertices` and ignores `text` entirely.
 
 Rows are split on the relation word rather than on x-position. Column
 x-positions drift between parts (these are scans -- the page is not always
-square on the platen), but every data row contains exactly one of
-পিতা/স্বামী/মাতা, and it sits between the two name fields, which are the two
-fields the app actually searches. Splitting on it costs nothing when a scan
-is skewed.
+square on the platen), but the relation word sits between the two name
+fields, which are the two fields the app actually searches, so splitting on
+it costs nothing when a scan is skewed.
+
+**Splitting on it is not the same as refusing everything that does not fit
+it**, and this module read the two as one rule for longer than it should
+have. The docstring here used to assert that "every data row contains
+exactly one of পিতা/স্বামী/মাতা". Three things about that were false, and
+each was costing electors:
+
+- `অন্য` ("other") is the roll's fourth relation code -- 296 rows.
+- Vision reads the relation cell glued to the first word of the relative's
+  name often enough to cost 389 more (`পিতানবেন`, `পিতামহঃ`, `পিতা-`).
+- 42 rows begin *at* the relation word, their name cell having produced no
+  tokens in that row's band, and were dropped for having nothing before it.
+
+727 electors in three ACs, findable by no search at all, none of them
+visible in any figure this module reports: the row simply never existed, so
+nothing counted it as damaged. That is the failure mode worth naming --
+every quality measure here is computed over rows that parsed, so the rows it
+loses entirely are exactly the ones it cannot report on.
+
+Recovering them makes one reported figure worse, which is the point. 685 of
+the 727 arrive with every column filled, but the 42 that begin at the
+relation word store with an empty name, so the corpus blank-name rate goes
+from 181/407,386 (0.0444%) to 223/408,113 (0.0546%), and the worst single
+part from 1.56% to 2.36% (AC291/part0044, 10 of 423). Those rows were always
+unreadable; before this they were unreadable *and* uncounted. A per-part
+nameless-row alarm calibrated against the old numbers is calibrated against
+a corpus that was hiding its own worst parts.
+
+**What is refused is now only a group that identifies nobody.** The
+distinction matters in the other direction too, because relaxing this test
+too far is how a cover page becomes voters. The corpus holds ~12,000 groups
+that carry an EPIC and no relation word -- which reads like 12,000 more lost
+electors until you look at one: `৪১ | WB | / | 42 | / | 287 | / | 003523`
+is an age and an EPIC, no name, no serial, no sex. It is the right-hand end
+of a row whose left half chained into a different group, and that left half
+parsed fine and is already indexed, minus its age and EPIC. Storing these
+would not recover an elector, it would invent one, and inflate every
+coverage figure the site publishes with rows no query can reach. They are a
+row-*assembly* defect and are left as one.
 
 **The serial column is consumed by shape and confirmed by value.** Position
 0 is only taken as a serial if it is a run of digits -- a scan sometimes
@@ -40,7 +78,11 @@ serial up to a constant, and candidates sharing that constant are reading the
 same numbering. SERIAL_RUN_MIN of them agreeing is not something OCR arrives
 at by accident. That admits 1,245 of 1,501 candidates corpus-wide and takes
 serial recovery from 93.07% to 93.38%; 202 of the 256 it refuses stand
-entirely alone.
+entirely alone. (Both figures are that change measured on its own. The
+shipped number now reads 93.37%, because the 727 rows this module stopped
+refusing -- see below -- are damaged rows that mostly carry no serial, so
+they land in the denominator and not the numerator. The widening's own
+effect is what the 93.07/93.38 pair is for.)
 
 **The remaining 6.6% is scan quality, not a parser defect** -- measured
 rather than assumed, and recorded so nobody spends a week on it. Of the rows
@@ -145,9 +187,9 @@ moves an elector out of reach of the person looking for them, while
 means 'unknown', never 'not your match'"). That is why the rule is
 conservative in one direction only: everything it is not sure of becomes
 NULL. Coverage is **78.79%** of rows overall and varies by AC -- 87.37%
-AC287, 72.20% AC291, 77.17% AC294 -- against 0% before. Those are counted
+AC287, 72.20% AC291, 77.18% AC294 -- against 0% before. Those are counted
 by replaying every cached Vision response for all 583 parts through this
-module and asking how many of the 407,386 rows come back with a non-NULL
+module and asking how many of the 408,113 rows come back with a non-NULL
 age; the method is written down because the figure it replaces (78.54%,
 87.55/71.05/76.85) is one whose own method can no longer be reconstructed,
 which is the only reason it went unnoticed that the corpus had moved
@@ -181,6 +223,42 @@ RELATION_WORDS = {
     "স্বামী": "H",   # husband
     "মাতা": "M",    # mother
 }
+
+# `অন্য` ("other") is this roll's fourth relation code -- base.py has carried
+# F/H/M/O since Karnataka -- and it is deliberately *not* a peer of the three
+# above. parse_row keys on a group holding exactly one relation word, so
+# promoting a word into that set turns any row whose names happen to contain
+# it into a two-relation-word refusal: a fix that loses rows to gain rows.
+# Counted over the whole corpus rather than argued, and stated as the
+# comparison that was actually run: the fallback stores 408,113 rows, of
+# which 296 are rows this module used to refuse. Promoting `অন্য` to a peer
+# instead stores 408,110 -- three fewer than the fallback, and not one more.
+# So the peer arrangement has no upside at all to trade against its cost;
+# there is no row it reaches that the fallback misses.
+#
+# The asymmetry that makes a fallback the right shape rather than a dodge:
+# পিতা/স্বামী/মাতা are kinship terms that do not otherwise occur anywhere in
+# this table, while `অন্য` is an ordinary word meaning "other". A group
+# holding both is far likelier to be a row related by one of the three with
+# the word "other" loose in it than a row related by "other" with a kinship
+# term loose in it -- which is exactly what those 3 rows turned out to be.
+RELATION_WORDS_FALLBACK = {
+    "অন্য": "O",    # other/guardian
+}
+
+_ALL_RELATION_WORDS = {**RELATION_WORDS, **RELATION_WORDS_FALLBACK}
+
+# What may sit between a relation word and the name it was read glued to.
+# `পিতা-` and `পিতাঃ` are the roll's own printed separators surviving inside
+# the token -- the visarga does duty as a colon here ("Father:").
+#
+# Including the visarga is safe next to `পিতামহঃ`, the commonest glued form
+# in the corpus by a factor of three, only because these are stripped from
+# the *start* of the remainder: `পিতাঃ` leaves "ঃ" and strips to nothing,
+# while `পিতামহঃ` leaves "মহঃ" and is untouched. `মহঃ` is the roll's
+# abbreviation for Mohammad and is a real part of the name -- trimming into
+# it would cost 179 relatives their first name.
+_GLUE_SEPARATORS = "-:. \u0983\u00a0\u2010\u2013"
 GENDER_WORDS = {
     "পুং": "M",     # male
     "স্ত্রী": "F",    # female
@@ -438,6 +516,60 @@ def _epic(tokens: list[str]) -> tuple[str, int]:
     return "", len(tokens)
 
 
+def _relation_at(tokens: list[str]) -> tuple[int | None, str]:
+    """Where the relation word is and what it means, or (None, "").
+
+    Exactly one, or none at all: two is not a row this function can split,
+    because which of them separates the two name fields is precisely what is
+    unknown. See RELATION_WORDS_FALLBACK for why `অন্য` is only consulted
+    once the three kinship terms have come back empty.
+    """
+    at = [i for i, t in enumerate(tokens) if t in RELATION_WORDS]
+    if len(at) == 1:
+        return at[0], RELATION_WORDS[tokens[at[0]]]
+    if not at:
+        at = [i for i, t in enumerate(tokens) if t in RELATION_WORDS_FALLBACK]
+        if len(at) == 1:
+            return at[0], RELATION_WORDS_FALLBACK[tokens[at[0]]]
+    return None, ""
+
+
+def _split_glued_relation(tokens: list[str]) -> tuple[list[str], str] | None:
+    """`["পিতামহঃ", "জবীর"]` -> `["পিতা", "মহঃ", "জবীর"]`, or None.
+
+    Vision sometimes reads the relation cell and the first word of the
+    relative's name as one token -- `পিতানবেন`, `স্বামীরপাই`, `পিতামহঃ`, or
+    with the roll's own printed dash surviving, `পিতা-`. The row is otherwise
+    intact: serial, both names, sex, age and EPIC are all there. Left alone
+    it carries no relation word at all and is refused outright, which over
+    the corpus is 389 electors findable by no search -- পিতা 349, স্বামী 28,
+    মাতা 11, and `অন্য` once, which is the whole reason this walks
+    _ALL_RELATION_WORDS rather than the three kinship terms.
+
+    This is a guess, unlike every other split in this module, so it is
+    hedged three ways. It runs only on a group that has already failed
+    `_relation_at`, so no row that parses today can change. The result has to
+    corroborate -- an EPIC or a sex word, something a header would not have
+    -- because "starts with these letters" is a weak signal on its own and a
+    name genuinely beginning `স্বামী-` (Swami as a monastic title) or `মাতা-`
+    would otherwise be split apart. And the row it produces carries a remark
+    naming the token, so a wrong split stays countable instead of blending
+    into the corpus.
+    """
+    for i, token in enumerate(tokens):
+        for word in _ALL_RELATION_WORDS:
+            if token == word or not token.startswith(word):
+                continue
+            rest = token[len(word):].lstrip(_GLUE_SEPARATORS)
+            out = tokens[:i] + [word] + ([rest] if rest else []) + tokens[i + 1:]
+            if _relation_at(out)[0] is None:
+                continue
+            corroborated = _epic(out)[0] or any(t in GENDER_WORDS for t in out)
+            if corroborated:
+                return out, token
+    return None
+
+
 def parse_row(tokens: list[str]) -> dict | None:
     """One data row, or None if this line isn't one.
 
@@ -445,15 +577,34 @@ def parse_row(tokens: list[str]) -> dict | None:
     the page title, the column-number strip and the footer carry none, which
     is what keeps them out without hardcoding how many header lines a part
     happens to have.
-    """
-    rel_at = [i for i, t in enumerate(tokens) if t in RELATION_WORDS]
-    if len(rel_at) != 1:
-        return None
-    r = rel_at[0]
-    if r == 0:
-        return None
 
+    That test is doing two jobs, and it is worth being explicit about the
+    second, because it is why so much of what this function refuses stays
+    refused. The corpus holds ~12,000 groups that carry an EPIC and no
+    relation word, which looks like 12,000 lost electors until you read
+    them: `৪১ | WB | / | 42 | / | 287 | / | 003523` is an age and an EPIC
+    with no name, no serial and no sex -- the right-hand end of a row whose
+    left half chained into a different group. Storing those would not
+    recover an elector, it would invent one: a nameless row no search can
+    reach, counted in every coverage figure the site publishes. They are a
+    row-*assembly* defect (the elector is already stored, from the left
+    half, minus their age and EPIC) and they are left for one.
+
+    What is refused here is therefore only ever a group that identifies
+    nobody. A group that identifies an elector is stored, with the damage in
+    the remark, however little else of it survived -- including a row that
+    begins at the relation word, whose name cell produced no tokens at all.
+    """
+    r, relation = _relation_at(tokens)
     remarks: list[str] = []
+
+    if r is None:
+        split = _split_glued_relation(tokens)
+        if split is None:
+            return None
+        tokens, glued = split
+        r, relation = _relation_at(tokens)
+        remarks.append(f"relation word read glued to the next token {glued!r}")
 
     # Only consume a leading token as the serial if it actually looks like
     # one. A scan sometimes drops the serial entirely, and taking position 0
@@ -545,10 +696,25 @@ def parse_row(tokens: list[str]) -> dict | None:
     # column can be reconstructed from the source document later; a row with
     # no name is one no query can ever reach, and the remark is the only
     # thing that makes those countable instead of merely absent.
+    #
+    # A row that *begins* at the relation word is a distinct failure from a
+    # name span that emptied out after trimming, and the remark separates
+    # them because the evidence about the two differs. Of 19 such rows on
+    # pages where the name column's x-range could be established from the
+    # page's own parsed rows, 18 have ink standing in that column -- 4 at the
+    # row's own height, 14 displaced by up to eight line-heights -- and 1 is
+    # genuinely empty. So for these the name is almost always sitting in the
+    # response already, chained onto a neighbouring row, and a recovery pass
+    # has something to select on. The blank is deliberate either way: the
+    # relation word tells us the token after it is the *relative's* name, so
+    # filling the elector's name with it would publish a false statement
+    # about who this row is, which is worse than an honest gap.
     full_name = " ".join(tokens[name_from:r])
     full_relative_name = " ".join(tail)
     if not full_name:
-        remarks.append("name not read")
+        remarks.append(
+            "name not read: row begins at the relation word" if r == 0
+            else "name not read")
     if not full_relative_name:
         remarks.append("relative's name not read")
 
@@ -556,7 +722,7 @@ def parse_row(tokens: list[str]) -> dict | None:
         "serial_no": serial,
         "serial_wide": wide,
         "full_name": full_name,
-        "relation_code": RELATION_WORDS[tokens[r]],
+        "relation_code": relation,
         "full_relative_name": full_relative_name,
         "gender": gender,
         "age": age,
