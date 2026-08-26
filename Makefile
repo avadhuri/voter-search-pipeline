@@ -177,8 +177,17 @@ migrate-translit: ## Backfill Latin-transliteration columns on an already-built 
 # fans per-AC parsing out across (default: cpu_count - 1); an interrupted
 # run is safe to just re-run -- already-finalized AC files are skipped, not
 # rebuilt.
-build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; ACS=AC1,AC2; PATCH=n revision; OUT=dir; WORKERS=n; REPLACE_CATALOG=1 to rewrite rather than merge)
-	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(if $(OUT),$(OUT),$(AC_DB_LOCAL_DIR)) $(if $(PATCH),--patch $(PATCH),) $(if $(WORKERS),--workers $(WORKERS),) $(if $(ACS),--acs $(ACS),) $(if $(REPLACE_CATALOG),--replace-catalog,)
+#
+# REPLACE_CATALOG=1 is the only way to retire an AC, and the shrink guard
+# fires on that path alone -- a merge has nothing to shrink. When the
+# replacement really is meant to publish fewer ACs than the catalog already
+# holds, ALLOW_CATALOG_SHRINK=1 passes build_db.py's --allow-catalog-shrink.
+# It is exposed here rather than left to a hand-rolled `python -m build_db`
+# because the standing rule is that every pipeline step runs unattended
+# through `make`, and reaching past this target is exactly what produced the
+# p0/p1 mismatch described above.
+build-db-ac: ## Build per-AC .sqlite files + catalogs (STATES=a,b,c; ACS=AC1,AC2; PATCH=n revision; OUT=dir; WORKERS=n; REPLACE_CATALOG=1 to rewrite rather than merge; ALLOW_CATALOG_SHRINK=1 to mean a smaller catalog)
+	PYTHONUNBUFFERED=1 $(PY) -m build_db --states $(if $(STATES),$(STATES),karnataka,west_bengal,haryana) --per-ac $(if $(OUT),$(OUT),$(AC_DB_LOCAL_DIR)) $(if $(PATCH),--patch $(PATCH),) $(if $(WORKERS),--workers $(WORKERS),) $(if $(ACS),--acs $(ACS),) $(if $(REPLACE_CATALOG),--replace-catalog,) $(if $(ALLOW_CATALOG_SHRINK),--allow-catalog-shrink,)
 
 # The gate between "it built" and "it can be served". Every check it runs is
 # for something that produces a completely normal-looking build -- right row
