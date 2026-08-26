@@ -1,4 +1,4 @@
-.PHONY: help setup download download-karnataka download-west-bengal download-haryana build-db build-db-ac check-servable decoder-oracle sample-names push-ac-db-dev roll-years migrate-translit search test clean
+.PHONY: help setup download download-karnataka download-west-bengal download-haryana ocr-vision build-db build-db-ac check-servable decoder-oracle sample-names push-ac-db-dev roll-years migrate-translit search test clean
 
 .DEFAULT_GOAL := help
 
@@ -105,6 +105,13 @@ endif
 AC_STATE := $(if $(STATE),$(STATE),karnataka)
 AC_RAW_DIR := $(if $(STATE),$(RAW_DIR)/$(STATE),$(RAW_DIR))
 AC_RAW_EXT := $(if $(STATE),zip,csv)
+ocr-vision: ## OCR the page-scan ACs via Google Cloud Vision (ACS=; STAGE=upload|annotate|poll|fetch|all; DRY_RUN=1)
+	$(PY) scripts/ocr_vision.py \
+	  $(if $(ACS),--acs $(ACS),) \
+	  $(if $(STAGE),--stage $(STAGE),) \
+	  $(if $(BUCKET),--bucket $(BUCKET),) \
+	  $(if $(DRY_RUN),--dry-run,)
+
 build-db: ## Build a SQLite DB from downloaded rolls (STATES=a,b,c; AC= for one AC, +STATE= for its state)
 ifdef AC
 	$(PY) -m build_db $(AC_RAW_DIR)/$(AC).$(AC_RAW_EXT) $(DB_DIR)/$(AC).sqlite --state $(AC_STATE)
