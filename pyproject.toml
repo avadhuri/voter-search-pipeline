@@ -40,6 +40,7 @@ py-modules = [
     "audit_raw_csv",
     "check_servable",
     "decoder_oracle",
+    "wb_decode_census",
     "eval_embeddings",
     "download_2002_all",
     "download_haryana",

@@ -294,3 +294,20 @@ test: ## Run pytest (two pre-existing failures are known -- see README)
 
 clean: ## Remove the venv and all downloaded/built data
 	rm -rf $(VENV) $(DB_DIR) $(RAW_DIR)
+
+# The oracle above is a SAMPLING instrument scored against a paid external
+# reader, and it is nearly blind to seating bugs: the two decoder fixes of
+# round six moved its aggregate disagreement by one cell out of 6,536 while
+# this census moved word-initial rephas from 19 to 0 across 889,050 tokens.
+# An aggregate similarity metric cannot detect a regression that improves the
+# aggregate. This one is exhaustive over what it scans, needs no network and
+# no API key, and checks a property Bengali makes impossible to violate, so
+# run it first and spend the oracle's money only on what it cannot see.
+# STRIDE=1 PARTS=8 scans the whole corpus instead of the default sample.
+wb-decode-census: ## Check the WB decoder against what Bengali forbids word-initially (STRIDE=, PARTS=, RAW=)
+	$(PY) -m wb_decode_census \
+	  --raw-dir $(if $(RAW),$(RAW),$(WB_RAW_DIR)) \
+	  $(if $(STRIDE),--stride $(STRIDE),) \
+	  $(if $(PARTS),--parts $(PARTS),) \
+	  $(if $(STRICT),--strict,) \
+	  $(if $(JSON),--json $(JSON),)
