@@ -455,3 +455,13 @@ def test_the_subjoined_ba_is_not_a_standalone_ba():
     # Unchanged by this commit in either direction -- gid 133 was already
     # right and stays right.
     assert decode(_pua("cc2482a685038594d46f")) == ("কেশব বর্মন", [])
+
+
+def test_the_ai_matra_is_not_the_e_matra():
+    """gid 206 was mapped ে. Both are pre-base and both buffer the same way,
+    so the placement rules never noticed -- only the letter was wrong, in
+    every name carrying ৈ.
+    """
+    assert sl.PREBASE_GIDS[206] == "ৈ"
+    assert decode(_pua("cea6cd9b7b")) == ("শৈলেন্দ্র", [])          # AC135, was শেলেন্দ্র
+    assert decode(_pua("ce856599")) == ("বৈদ্য", [])                # AC164, was বেদ্য

@@ -269,7 +269,11 @@ PREBASE_GIDS = {
     194: "ি",   # ি
     204: "ে",   # ে
     205: "ে",   # ে
-    206: "ে",   # ে
+    # 206 was read as ে. Every name it appears in wants ৈ -- চৈতন্য, বৈদ্যনাথ,
+    # শৈলেন্দ্র, বৈদ্য, ত্রৈলক্য -- and the oracle disagreed with Vision on
+    # 128 of 128 cells carrying it. It is a second drawn form of the same
+    # matra 207 already carries.
+    206: "ৈ",   # ৈ
     207: "ৈ",   # ৈ
 }
 
