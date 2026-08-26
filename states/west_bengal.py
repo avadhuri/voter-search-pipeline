@@ -299,6 +299,18 @@ def _bn_key(text):
 
 N_COLS = 8
 COL_SL, COL_HOUSE, COL_NAME, COL_REL, COL_RELNAME, COL_SEX, COL_AGE, COL_EPIC = range(8)
+# Columns a dropped glyph is worth naming in a remark, with the label to name
+# it by. COL_HOUSE is absent deliberately: it is not stored on VoterRecord, so
+# a remark about it points at nothing a reader can go and look at.
+TEXTLESS_FIELDS = (
+    (COL_SL, "serial_no"),
+    (COL_NAME, "name"),
+    (COL_REL, "relation_code"),
+    (COL_RELNAME, "relative's name"),
+    (COL_SEX, "gender"),
+    (COL_AGE, "age"),
+    (COL_EPIC, "EPIC no"),
+)
 
 ROW_TOL = 3.0      # pt; serial numbers sit on a slightly different baseline
 RUN_GAP = 2.0      # pt; wider than this between glyphs means a word break
@@ -365,6 +377,25 @@ def _cell_text(chars):
         parts.append(BN_ASCII_GID.get(_gid_of(t), t) if _is_undecoded(t) else t)
         prev = ch["x1"]
     return "".join(parts).strip()
+
+
+def _consumed_textless_glyph(chars):
+    """Whether this cell swallowed a glyph that renders no character.
+
+    A .notdef inside an otherwise-Latin subset maps to "" (see
+    _patch_pdfminer_gid_encoding).  That is exact -- it renders nothing on the
+    page -- but it is also, after the fact, indistinguishable from the
+    character never having been there, which is the one thing "" cannot say
+    about itself.  Measured over the 21 affected constituencies it is rare:
+    160 cells in 205,402 rows, 0.016%.  Rare is not none, and where it lands
+    between two letters the cell comes out a plausible WRONG value -- a name
+    short a letter, an EPIC short a digit -- which nothing downstream can
+    distinguish from a correct one.
+
+    pdfplumber keeps the char object with empty text, so the fact is readable
+    here and nowhere after here.  Read it, and let _record declare it.
+    """
+    return any(ch["text"] == "" for ch in chars)
 
 
 def _boundaries(centres, data_rows, measure_serial=True):
@@ -757,13 +788,19 @@ def _segment_rows(centres, body, own_columns=True):
     out, prev_top = [], None
     for row in body:
         top = min(ch["top"] for ch in row)
-        cells = [_cell_text(c) for c in _split_row(row, bounds)]
+        split = _split_row(row, bounds)
+        cells = [_cell_text(c) for c in split]
+        # Parallel to `cells`, never merged into it: the flag has to travel
+        # without changing a single character of the text, because the text is
+        # what _starts_with_serial reads to decide the row is a row at all.
+        textless = [_consumed_textless_glyph(c) for c in split]
         if cells[COL_SL].isdigit():
-            out.append(cells)
+            out.append([cells, textless])
         elif out and not cells[COL_SL] and top - prev_top <= reach:
             for i, extra in enumerate(cells):
                 if extra:
-                    out[-1][i] = (out[-1][i] + " " + extra).strip()
+                    out[-1][0][i] = (out[-1][0][i] + " " + extra).strip()
+                out[-1][1][i] = out[-1][1][i] or textless[i]
         else:
             continue
         prev_top = top
@@ -1061,17 +1098,19 @@ class WestBengalConnector(StateConnector):
                 rows, geometry = _page_rows(page, geometry, page_dropped)
                 if page_dropped:
                     dropped.append((part_no, page.page_number, sum(page_dropped)))
-                for cells in rows:
+                for cells, textless in rows:
                     records.append(
                         self._record(
-                            cells, ac, roll_year, part_no, member, bool(shreelipi)
+                            cells, ac, roll_year, part_no, member,
+                            bool(shreelipi), textless,
                         )
                     )
         for rec in records:
             rec.locality = locality or ""
         return records
 
-    def _record(self, cells, ac, roll_year, part_no, member, shreelipi=False):
+    def _record(self, cells, ac, roll_year, part_no, member, shreelipi=False,
+                textless=None):
         remarks = []
         name = cells[COL_NAME]
         rel_name = cells[COL_RELNAME]
@@ -1115,18 +1154,45 @@ class WestBengalConnector(StateConnector):
             remarks.append(f"unreadable EPIC no: {_describe(epic)}")
             epic = ""
 
+        serial_no = _parse_int(cells[COL_SL], "serial_no", remarks)
+        age = _parse_int(cells[COL_AGE], "age", remarks)
+
+        # Recover-and-declare, the twin of the refuse-and-declare above: a row
+        # is not emitted carrying a glyph we know we dropped without saying so.
+        # Checked against what is actually emitted, not against the raw cell --
+        # a field already blanked has its own remark, and two remarks for one
+        # cause is noise.
+        if textless:
+            emitted = {
+                COL_SL: "" if serial_no is None else str(serial_no),
+                COL_NAME: name,
+                COL_REL: relation,
+                COL_RELNAME: rel_name,
+                COL_SEX: gender,
+                COL_AGE: "" if age is None else str(age),
+                COL_EPIC: epic,
+            }
+            lost = [label for col, label in TEXTLESS_FIELDS
+                    if textless[col] and emitted[col].strip()]
+            if lost:
+                remarks.append(
+                    "glyph(s) the source font does not encode were dropped "
+                    "from: " + ", ".join(lost) + " -- the value is short a "
+                    "character and may not match exactly"
+                )
+
         return VoterRecord(
             state=self.state_id,
             district=ac.district,
             ac_code=ac.ac_code,
             ac_name=ac.ac_name,
             part_no=part_no,
-            serial_no=_parse_int(cells[COL_SL], "serial_no", remarks),
+            serial_no=serial_no,
             local_ref=epic,
             full_name=name,
             full_relative_name=rel_name,
             relation_code=relation,
-            age=_parse_int(cells[COL_AGE], "age", remarks),
+            age=age,
             gender=gender,
             roll_year=roll_year,
             remark="; ".join(remarks),

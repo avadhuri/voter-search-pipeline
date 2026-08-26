@@ -244,3 +244,110 @@ def test_no_row_is_blanked_without_saying_why(ac_code, part):
             assert (r.remark or "").strip(), (
                 "%s part %d serial %s is blank and says nothing about why"
                 % (ac_code, part, r.serial_no))
+
+
+# -- recover-and-declare ---------------------------------------------------
+#
+# The twin of the rule above. Refusing a row and saying why is half of it;
+# the other half is that a row we DO emit never carries a glyph we know we
+# dropped without saying so. The mapping sends a textless gid to "", which is
+# exact and is also, after the fact, indistinguishable from the character
+# never having been there -- so "" is the one thing that cannot report on
+# itself. pdfplumber keeps the char with empty text, which is where
+# _consumed_textless_glyph reads the fact before it is gone.
+#
+# Detected, never enumerated. A list of the affected rows would be keyed by
+# indices no reparse is obliged to reproduce -- the same hazard as an xfail
+# list keyed by fixture position, in a worse place, because here the list
+# would be the only thing standing between a citizen and a wrong EPIC.
+
+DROPPED = "does not encode"
+
+
+def _record_with(textless_cols, cells=None):
+    """Drive _record directly with a chosen per-cell textless flag list."""
+    from states.registry import STATE_CONNECTORS
+    from states.west_bengal import (
+        COL_SL, COL_NAME, COL_REL, COL_RELNAME, COL_SEX, COL_AGE, COL_EPIC,
+        N_COLS,
+    )
+
+    conn = STATE_CONNECTORS["west_bengal"]["connector_cls"]()
+    ac = conn.list_constituencies()[0]
+    row = [""] * N_COLS
+    row[COL_SL] = "12"
+    row[COL_NAME] = "Mitali Mukherjee"
+    row[COL_REL] = "Father"
+    row[COL_RELNAME] = "Sailen Mukherjee"
+    row[COL_SEX] = "F"
+    row[COL_AGE] = "44"
+    row[COL_EPIC] = "WB/21/143/0120"
+    if cells:
+        for col, val in cells.items():
+            row[col] = val
+    flags = [False] * N_COLS
+    for col in textless_cols:
+        flags[col] = True
+    return conn._record(row, ac, 2002, 5, "part0005.pdf", False, flags)
+
+
+def test_a_dropped_glyph_is_declared_and_names_its_field():
+    from states.west_bengal import COL_EPIC
+
+    rec = _record_with([COL_EPIC])
+    assert DROPPED in rec.remark
+    assert "EPIC no" in rec.remark
+    # and only that field -- a remark that names every column is not a handle
+    assert "name" not in rec.remark.split("dropped from:")[1]
+
+
+def test_a_row_with_no_dropped_glyph_says_nothing():
+    """The discriminator. An assertion that fires on every row is not one."""
+    assert DROPPED not in (_record_with([]).remark or "")
+
+
+def test_a_field_already_blanked_is_not_declared_twice():
+    """A dropped glyph in a cell whose value we then refuse outright already
+    has a remark saying the cell is unreadable. Two remarks for one cause is
+    noise, and noise is how the real one stops being read."""
+    from states.west_bengal import COL_EPIC, PUA_BASE
+
+    rec = _record_with([COL_EPIC], {COL_EPIC: chr(PUA_BASE + 140)})
+    assert "unreadable EPIC no" in rec.remark
+    assert DROPPED not in rec.remark
+    # Non-vacuous: the identical flags on a readable EPIC do declare, so this
+    # is the blanking suppressing the remark and not the remark being off.
+    assert DROPPED in _record_with([COL_EPIC]).remark
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(RAW_DIR, "AC151.zip")),
+                    reason="raw data not downloaded")
+def test_the_short_epic_declares_itself():
+    """AC151 part 71 serial 11 is the sharpest real case in the census.
+
+    Its EPIC recovers as WB/23/151/891 -- thirteen characters where every
+    sibling row has sixteen -- because a glyph inside the number rendered
+    nothing. Before the classification fix the whole row was blank, so this
+    is not a good value turned bad; it is a row findable by nothing at all
+    becoming findable by name while carrying a number that will not match.
+    That is the case the remark exists for, and it is the one the house rule
+    about not answering wrongly bears on most directly.
+    """
+    rec = [r for r in _records("AC151", 71) if r.serial_no == 11]
+    assert rec, "AC151 part 71 serial 11 is the fixture; it must parse"
+    rec = rec[0]
+    assert rec.local_ref == "WB/23/151/891"
+    assert DROPPED in rec.remark and "EPIC no" in rec.remark
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(RAW_DIR, "AC151.zip")),
+                    reason="raw data not downloaded")
+def test_the_declaration_is_rare_enough_to_mean_something():
+    """1 of 875 rows on AC151 part 71, which is the real point of the census:
+    the .notdef poisons a font's classification and then almost never appears
+    in the rendered text. A remark on a large fraction of the part would mean
+    the detector had stopped discriminating."""
+    recs = _records("AC151", 71)
+    flagged = [r for r in recs if DROPPED in (r.remark or "")]
+    assert len(recs) > 500
+    assert 0 < len(flagged) < len(recs) // 100
