@@ -457,7 +457,15 @@ def _serial_boundary(data_rows, centres, fallback):
     for row in data_rows:
         runs = _runs(row)
         if len(runs) < 2:
-            return fallback
+            # Nothing printed after the serial, so this row shows no gutter.
+            # Skipping it is not the same as refusing: one such row -- a lone
+            # "2" among ten well-formed rows on AC151 part 87 page 36 -- used
+            # to abandon the measurement for the whole segment and take the
+            # other nine down with it, back onto the anchor boundary this
+            # function exists to replace. A row with no evidence contributes
+            # none; only a row whose evidence contradicts the measurement
+            # (a serial merged into its house number) still vetoes it, below.
+            continue
         end = max(ch["x1"] for ch in runs[0])
         start = min(ch["x0"] for ch in runs[1])
         left = end if left is None else max(left, end)

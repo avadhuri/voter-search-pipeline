@@ -272,3 +272,87 @@ def test_ac160_part_24_drops_nothing_now(capsys):
     # 797 main-roll serials + 9 additions + 160 corrections, as printed on the
     # part's own SUMMARY OF ELECTORS and SUPPLEMENT DETAILS pages
     assert len(records) == 966
+
+
+# --------------------------------------------------------------------------
+# a row with nothing after its serial is no evidence, not a veto
+
+AC151_ZIP = os.path.join(RAW_DIR, "AC151.zip")
+
+
+def _lone_serial(top):
+    """A serial printed with nothing beside it. Real: page 36 of AC151 part
+    87, in the list of corrections, carries one -- the roll gives no name,
+    house or EPIC for it, so the row is blank past column 1."""
+    return _row([("2", 34.9, 40.4)], top)
+
+
+def test_a_row_with_nothing_after_its_serial_does_not_veto_the_others():
+    """It shows no gutter, so it can contribute none -- but for a while it
+    took the whole segment down with it: _serial_boundary returned the
+    fallback the moment it met one, and the nine well-formed rows beside it
+    went back onto the anchor boundary and were dropped."""
+    rows = [_data_row("34", 20.0 + 10 * i) for i in range(9)]
+    clean = _boundaries(ANCHORS, rows)[1]
+    rows.insert(1, _lone_serial(30.0))
+    assert _boundaries(ANCHORS, rows)[1] == clean
+    assert SERIAL_GUTTER[0] < clean < SERIAL_GUTTER[1]
+
+
+def test_a_segment_of_nothing_but_lone_serials_keeps_the_anchor_boundary():
+    """Skipping every row leaves nothing measured, which is the one case the
+    fallback is for."""
+    rows = [_lone_serial(20.0 + 10 * i) for i in range(4)]
+    assert (_boundaries(ANCHORS, rows)[1]
+            == _boundaries(ANCHORS, rows, measure_serial=False)[1])
+
+
+@pytest.mark.skipif(not os.path.exists(AC151_ZIP), reason="raw data not downloaded")
+def test_ac151_part_87_reads_every_row_the_roll_says_it_holds():
+    import pdfplumber  # noqa: F401  (imported for the same reason as above)
+
+    with zipfile.ZipFile(AC151_ZIP) as zf:
+        blob = zf.read("part0087.pdf")
+    ac = Constituency(ac_code="AC151", ac_name="Dhakuria", district="Kolkata SOUTH")
+    records = WestBengalConnector()._parse_part(blob, ac, 2002, 87, "part0087.pdf")
+    # 1249 main-roll serials + 130 additions + 44 corrections, as printed on
+    # the part's own SUMMARY OF ELECTORS and SUPPLEMENT DETAILS pages
+    assert len(records) == 1423
+    assert len({r.serial_no for r in records}) == 1379
+
+
+def _vetoing_on_a_lone_serial(monkeypatch):
+    """_serial_boundary as it was written before this fix: the first data row
+    with nothing after its serial abandoned the measurement for the whole
+    segment. Reproduced here rather than reverted wholesale, so the control
+    isolates this change instead of also undoing the boundary fix beneath it.
+    """
+    def vetoing(data_rows, centres, fallback):
+        left = right = None
+        for row in data_rows:
+            runs = wb._runs(row)
+            if len(runs) < 2:
+                return fallback
+            end = max(ch["x1"] for ch in runs[0])
+            start = min(ch["x0"] for ch in runs[1])
+            left = end if left is None else max(left, end)
+            right = start if right is None else min(right, start)
+        if left is None or right <= left:
+            return fallback
+        boundary = (left + right) / 2
+        return fallback if boundary >= centres[1] else boundary
+
+    monkeypatch.setattr(wb, "_serial_boundary", vetoing)
+
+
+@pytest.mark.skipif(not os.path.exists(AC151_ZIP), reason="raw data not downloaded")
+def test_ac151_part_87_loses_nine_rows_if_the_lone_serial_vetoes_again(monkeypatch):
+    """The positive control. Page 36 holds ten rows of the corrections list
+    and one lone serial; vetoing on the latter costs the nine, which is what
+    a clean run above cannot distinguish from a check that cannot fire."""
+    _vetoing_on_a_lone_serial(monkeypatch)
+    with zipfile.ZipFile(AC151_ZIP) as zf:
+        blob = zf.read("part0087.pdf")
+    ac = Constituency(ac_code="AC151", ac_name="Dhakuria", district="Kolkata SOUTH")
+    records = WestBengalConnector()._parse_part(blob, ac, 2002, 87, "part0087.pdf")
+    assert len(records) == 1415
