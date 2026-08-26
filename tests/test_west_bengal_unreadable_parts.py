@@ -112,6 +112,29 @@ def _parse(blobs, monkeypatch=None, good=None):
 
 
 # --------------------------------------------------------------------------
+# the fixture, which is an assertion about the data and not scaffolding
+
+def test_the_fixture_names_the_constituency_the_connector_declares():
+    """AC above is hand-built, and every refusal in this module reads its name
+    out of it.
+
+    Not one test here would fail if AC said RAMPURHAT: the message takes the
+    name from the object it is handed and echoes it back faithfully, so a
+    wrong fixture produces a confident, correctly-formatted, wrong sentence.
+    That echo has already been read as a fact about the roll -- this very AC
+    was verified in review as "AC088 (RAMPURHAT)", which is AC291 in Birbhum,
+    because a hand-built Constituency said so and the connector repeated it.
+
+    So the fixture is held against the connector's own catalog rather than
+    trusted. It costs one JSON read and it is the only thing in this file that
+    can catch the failure the file is otherwise built to produce.
+    """
+    declared = {ac.ac_code: ac
+                for ac in WestBengalConnector().list_constituencies()}[AC.ac_code]
+    assert (declared.ac_name, declared.district) == (AC.ac_name, AC.district)
+
+
+# --------------------------------------------------------------------------
 # the guard itself
 
 def test_a_part_that_raises_out_of_the_reader_is_named_in_the_refusal():
