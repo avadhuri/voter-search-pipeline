@@ -263,6 +263,35 @@ def test_the_three_conjuncts_read_off_latin_origin_names():
     assert decode(_pua("72"))[0] == decode(_pua("56b4"))[0]
 
 
+def test_two_ligatures_labelled_ra_phala_are_not_ra_phalas():
+    """48 and 127 read as গ্র and প্র. They are গ্ধ and প্প.
+
+    Eight glyphs decode to a cluster ending in a ra-phala. Six are right and
+    carry 37-112 cells each; these two are wrong in every cell they appear in.
+    The oracle is the names, which admit one spelling apiece -- স্নিগ্ধা,
+    বাপ্পা, বাপ্পাদিত্য, আপ্পাল -- and which the old table turned into
+    স্নিগ্রা, বাপ্রা, বাপ্রাদিত্য, আপ্রাল, none of which is a name. A 900-dpi
+    render of the cells agrees.
+
+    Neither is reachable by the decoder oracle: it needs MIN_CELLS to call a
+    glyph, and these carry 7 and 9. They were found by the other instrument --
+    a conjunct absent from the decoded output over a 25-AC sweep. গ্ধ and প্প
+    were emitted zero times in 58,258 name cells, because the only glyph that
+    emits either was reading as something else."""
+    assert sl.GID_MAP[48] == "গ" + sl.HASANT + "ধ"
+    assert sl.GID_MAP[127] == "প" + sl.HASANT + "প"
+    for hexstr, expected in (("c2b27730de82c1", "স্নিগ্ধা"),
+                             ("85c17fc1", "বাপ্পা"),
+                             ("85c17fc1c265578299", "বাপ্পাদিত্য"),
+                             ("05c17fc19b", "আপ্পাল")):
+        text, unknown = decode(_pua(hexstr))
+        assert text == expected, (hexstr, text, expected)
+        assert unknown == []
+    # The six that genuinely are ra-phalas keep their reading -- the fix is
+    # two labels, not a change to how a ra-phala is composed.
+    assert decode(_pua("91"))[0] == "ভ" + sl.HASANT + "র"
+
+
 def test_the_du_connector_is_silence_not_a_missing_letter():
     """223 is only ever drawn between ড়/ঢ় and a following ু/ূ -- the u-matra
     cannot sit under the nukta, so the font draws a connector for it. Dropping
@@ -353,8 +382,13 @@ def test_a_prebase_matra_waits_for_the_joiner():
     """A pre-base matra is released once its cluster is complete, and the
     joiner continues that cluster. Releasing it early left the joiner with a
     matra behind it instead of a consonant, so the hasant was dropped and the
-    repha then seated against the matra: সর্ব্বেশবর came out সবের্বশবর."""
-    assert decode(_pua("afcd85e085d4a68c9a"))[0] == "সর্ব্বেশবর"
+    repha then seated against the matra: সর্ব্বেশ্বর came out সবের্বশবর.
+
+    The expectation here used to read সর্ব্বেশবর, missing the শ্ব hasant --
+    the gid-140 defect, sitting inside the fixture of a test about a different
+    glyph, asserted as correct. Nothing about this test could have caught it:
+    what it exercises is the joiner, and the joiner works."""
+    assert decode(_pua("afcd85e085d4a68c9a"))[0] == "সর্ব্বেশ্বর"
     assert decode(_pua("afc1c285e0859a"))[0] == "সাব্বির"        # was সাবি বর
 
 
@@ -425,3 +459,105 @@ def test_a_half_consonant_is_not_its_full_form():
     assert decode(_pua("85c13d3a82c1")) == ("বাচ্চা", [])          # was বাচচা
     assert decode(_pua("9a5e79c1")) == ("রত্না", [])               # half ত
     assert decode(_pua("9a57826fc1")) == ("রতনা", [])             # full ত, same name
+
+
+def test_the_subjoined_ba_is_not_a_standalone_ba():
+    """gid 140 sat in GID_MAP as a plain ব. It is the ba-phala -- the ব drawn
+    UNDER its base -- so mapping it as a letter dropped the hasant out of every
+    -শ্বর name in the state. It never appears word-initially, and 216 of its
+    217 occurrences follow gid 166 শ; gid 133 is the genuine standalone ব that
+    follows a শ.
+    """
+    assert 140 not in sl.GID_MAP
+    assert decode(_pua("98cd4382a68c9a")) == ("যজ্ঞেশ্বর", [])      # AC205, was যজ্ঞেশবর
+    assert decode(_pua("2482c1cd94a68c9a")) == ("কামেশ্বর", [])     # AC161, was কামেশবর
+
+    # The negative case, which matters more than either of those: a genuine
+    # standalone ব after শ must still decode as শব. Removing gid 140 from the
+    # table is only right if the font really does keep a second glyph for that,
+    # and this cell settles it -- AC061 prints both in one name. শিব is drawn
+    # with gid 133 and বিশ্বাস with gid 140, and the old table read it
+    # শিবপদ বিশবাস: the ব the font drew as a letter came through, the one it
+    # drew as a phala lost its hasant. A fix that over-reached would spell this
+    # শি্বপদ.
+    assert decode(_pua("c2a6857c6503c285a68cc1af")) == ("শিবপদ বিশ্বাস", [])
+    # Unchanged by this commit in either direction -- gid 133 was already
+    # right and stays right.
+    assert decode(_pua("cc2482a685038594d46f")) == ("কেশব বর্মন", [])
+
+
+def test_the_ai_matra_is_not_the_e_matra():
+    """gid 206 was mapped ে. Both are pre-base and both buffer the same way,
+    so the placement rules never noticed -- only the letter was wrong, in
+    every name carrying ৈ.
+    """
+    assert sl.PREBASE_GIDS[206] == "ৈ"
+    assert decode(_pua("cea6cd9b7b")) == ("শৈলেন্দ্র", [])          # AC135, was শেলেন্দ্র
+    assert decode(_pua("ce856599")) == ("বৈদ্য", [])                # AC164, was বেদ্য
+
+
+def test_a_repha_after_a_matra_seats_on_the_letter_it_cleared():
+    """The repha branch used to decide from the tail of the buffer it was
+    emitting into rather than from the glyph the font actually drew before the
+    repha. A hook, a joiner or a stem consumes a glyph without appending
+    anything, so the buffer tail could be a matra two or three glyphs back --
+    and the repha then rode the wrong cluster.
+
+    These are locked BY NAME, not by "the repha seats correctly": a later
+    refactor can satisfy a structural assertion and still spell Kartik
+    কাতির্ক. Every glyph run below is a real token lifted from the AC named
+    beside it, and the `was` is what the table emitted for those same bytes
+    before the fix.
+    """
+    assert decode(_pua("2482c1c257d4822482")) == ("কার্তিক", [])   # AC126, was কাতির্ক
+    assert decode(_pua("94c23fd46fc1")) == ("মর্জিনা", [])          # AC034, was মজির্না
+
+
+def test_a_word_never_begins_with_a_repha():
+    """A repha needs a consonant in front of it to clear, so a Bengali word
+    cannot begin with one: an insertion index of 0 is proof the seating is
+    wrong whatever the stream said, and the repha belongs to the consonant
+    ahead instead.
+
+    This is what separates the corpus's two typesettings of the same cluster.
+    কার্ত্তিক is drawn ক া ি ত্ত র্ in one part and ক া ি র্ ত্ত in another;
+    only the second lands at 0. Without the check the second spelling came out
+    র্কাত্তিক -- and নির্মল, one of the commonest names in the state, came out
+    র্নিমল.
+    """
+    for pua_hex, expected in [
+        ("c26fd4949b", "নির্মল"),          # AC001
+        ("c26fd4949bc1", "নির্মলা"),        # AC205
+        ("2482c1c2d459822482", "কার্ত্তিক"),  # AC088
+        ("85d452c19bc4", "বর্ণালী"),        # AC118
+        ("46d48252c19ac16fc4", "ঝর্ণারানী"),  # AC202
+    ]:
+        assert decode(_pua(pua_hex)) == (expected, []), expected
+        assert not expected.startswith(sl.REPHA)
+
+
+def test_a_conjunct_drawn_as_one_glyph_holds_the_repha_too():
+    """A repha lands past the matra of a CONJUNCT, so it rides the cluster
+    behind it rather than the consonant ahead. That test only looked for a
+    conjunct stored as two buffer entries -- a half form plus the letter
+    completing it, hasant at the END of the first. The font also draws some
+    conjuncts as ONE glyph with its own table entry (gid 89 is ত্ত), where the
+    hasant is in the MIDDLE, and `.endswith()` could not see it.
+
+    AC006 part0063 page 2 prints the same surname typeset both ways, which is
+    why nothing caught this: the common spelling was already correct.
+    """
+    assert decode(_pua("2482c459d4826fc4bbc1")) == ("কীর্ত্তনীয়া", [])
+    # The same surname, matras typeset the other way round. The repha belongs
+    # on ত্ত here too; it used to seat on the ন after it (was কিত্তীর্নীয়া).
+    assert decode(_pua("c224825982c4d46fc4bbc1")) == ("কির্ত্তীনীয়া", [])
+
+
+def test_a_repha_rides_a_below_base_phala_too():
+    """_cluster_start() walked back over elements ENDING in a hasant, which is
+    how a half form is stored. A below-base phala is stored the other way
+    round -- one element STARTING with a hasant -- so the walk stopped at it
+    and seated the repha inside the cluster it rides.
+    """
+    assert decode(_pua("65c6cd9899c1d46d6f")) == ("দুর্য্যোধন", [])   # AC061, was দুযর্্যোধন
+    assert decode(_pua("05765d9899c1d494c4")) == ("অন্তর্য্যামী", [])  # AC229, was অন্তযর্্যামী

@@ -47,17 +47,35 @@ only when every gid it uses lies in 3..97. Everything else decodes to
 U+E000+gid, which keeps an undecoded glyph distinguishable from a real
 character instead of silently becoming plausible-looking wrong text.
 
-Which leaves the typesetting, see parse_raw(). 23 ACs are typeset in English;
-the rest are typeset in Bengali, and a Bengali glyph id cannot be turned into
-Unicode without a gid->Unicode table for that font, which nothing in the PDF
-provides. Such a table has since been derived for the Shree-Lipi font 265 of
-them use -- states/west_bengal_shreelipi.py -- so their names decode too, with
-any glyph the table does not know reported in the row's remark rather than
-guessed at. What is still undecodable is Darjeeling's own font: AC022-AC024
-entirely, and a minority of the parts of AC025/AC026, whose glyph ids overlap
-Shree-Lipi's numerically while meaning something else. Rows from those parts
-keep their numeric and closed-vocabulary columns (see BN_DIGIT_GID /
-BN_RELATION / BN_GENDER below) and carry empty names with a remark saying so.
+What parse_raw() dispatches on
+------------------------------
+Three kinds of part PDF reach this connector, and which one a file is can be
+read off the file itself rather than off a list of AC codes:
+
+- **a Latin text layer** -- the ~19 Kolkata ACs, typeset in English. The text
+  comes straight out of the PDF.
+- **a PUA text layer** -- ~265 ACs typeset in Bengali, whose glyph ids carry
+  no Unicode meaning of their own. A gid->Unicode table has been derived for
+  the Shree-Lipi font they use (states/west_bengal_shreelipi.py), so their
+  names decode too, with any glyph the table does not know reported in the
+  row's remark rather than guessed at. Still undecodable is Darjeeling's own
+  font: AC022-AC024 entirely, and a minority of the parts of AC025/AC026,
+  whose glyph ids overlap Shree-Lipi's numerically while meaning something
+  else. Rows from those parts keep their numeric and closed-vocabulary
+  columns (see BN_DIGIT_GID / BN_RELATION / BN_GENDER below) and carry empty
+  names with a remark saying so.
+- **no text layer at all** -- AC287, AC291, AC294 are page images, so there
+  are no glyphs for any of the font work above to decode. They go through
+  Cloud Vision (scripts/ocr_vision.py) and come back as word geometry, which
+  states/west_bengal_ocr.py reassembles into roll rows. They stay West Bengal
+  ACs with their own ac_codes -- see _parse_scanned() for why that is a
+  branch here rather than a connector of its own.
+
+The three cases are disjoint and each is decided *before* any of them runs,
+never by one path failing into the next. That matters more here than the
+tidiness of it: a Shree-Lipi part misrouted to OCR, or a scan misrouted to
+the glyph decoder, does not raise -- it produces plausible wrong names, which
+is the one failure this connector has no way to notice downstream.
 """
 import io
 import json
@@ -68,13 +86,26 @@ from base64 import b64encode
 
 import requests
 
-from states.base import Constituency, StateConnector, VoterRecord
+from states.base import (
+    Constituency,
+    StateConnector,
+    UnparseableRollError,
+    VoterRecord,
+)
+from states.west_bengal_ocr import OCR_SUBDIR, ocr_gaps, page_failures, parse_part
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 AC_META_PATH = os.path.join(_HERE, "meta", "west_bengal_ac_meta.json")
 
 PDF_URL = "https://ceowestbengal.wb.gov.in/RollPDF/GetDraft?acId={ac_id}&key={key}"
 PART_MEMBER = "part{part_no:04d}.pdf"
+
+# Where scripts/ocr_vision.py leaves its responses -- one directory per AC
+# under this state's raw dir. Spelled out here rather than read from
+# states/registry.py, which imports this module; a test asserts the two
+# agree instead.
+RAW_DIR = os.path.join("data", "raw", "west_bengal")
+OCR_DIR = os.path.join(RAW_DIR, OCR_SUBDIR)
 
 RELATION_NORMALIZE = {
     "": "", "-": "",
@@ -451,6 +482,89 @@ def _parse_cover_locality(page, shreelipi=False):
 # record extraction
 # --------------------------------------------------------------------------
 
+def _report_unread_pages(ac, stems, unread):
+    """Say, on the build log, which pages Vision answered but could not read.
+
+    Deliberately not an UnparseableRollError. The gap check above refuses an
+    AC whose OCR *run* is unfinished, because re-running closes it; this is
+    the other thing -- Vision answered for every page, and for some of them
+    the answer was that it could not read the image. Refusing the AC over
+    that publishes "AC287 is not digitized", which is 0.5% true, in place of
+    "AC287 is digitized" with a named hole in it, which is 99.5% true; and
+    UnparseableRollError's contract is an AC that cannot be parsed *at all*,
+    which this is not.
+
+    So it is carried and named. Whoever reads the build output learns which
+    parts are short and by how much, which is what a re-OCR pass needs. A
+    page that came back unreadable every time is a source-side defect (see
+    AC287 part0103, whose PDF declares a 1859x2630pt page box where every
+    other part is A4 -- Vision rejects the render with "Bad image data.")
+    and wants fixing at the upload stage, not here.
+    """
+    if not unread:
+        return
+    by_part = {}
+    for stem, page, why in unread:
+        by_part.setdefault(stem, []).append((page, why))
+    worst = sorted(by_part.items(), key=lambda kv: -len(kv[1]))
+    shown = "; ".join(f"{stem} p{pages[0][0]} +{len(pages) - 1} more" if len(pages) > 1
+                      else f"{stem} p{pages[0][0]}" for stem, pages in worst[:5])
+    reasons = sorted({why for _, _, why in unread})
+    print(
+        f"  {ac.ac_code} ({ac.ac_name}): {len(unread)} page(s) across "
+        f"{len(by_part)} of {len(stems)} part(s) came back unreadable and hold "
+        f"no electors here -- {shown}"
+        + (f" ... (+{len(by_part) - 5} more part(s))" if len(by_part) > 5 else "")
+        + f" [Vision said: {', '.join(reasons)}]"
+    )
+
+
+def _part_no_of(member):
+    """The part number a zip member name carries, or None.
+
+    The downloader names members part{part_no:04d}.pdf from the CEO site's
+    own part index, and scripts/ocr_vision.py names its per-part directories
+    after those stems -- so this is the one place the two halves agree on
+    what a part number is, and it is what makes source_url resolvable per
+    part (states/source_urls.py joins on (ac_code, part_no)).
+    """
+    m = re.search(r"(\d+)", os.path.basename(member))
+    return int(m.group(1)) if m else None
+
+
+# The three kinds of part PDF this state ships, as parse_raw() dispatches on
+# them. Named rather than inferred so that no path is ever reached by another
+# one failing: a scan run through the glyph decoder, or a Shree-Lipi part run
+# through the OCR responses, does not raise -- it yields confident wrong
+# names, which is the one failure this connector cannot notice downstream.
+LAYER_SCANNED = "scanned"      # no text layer at all -- pixels (AC287/291/294)
+LAYER_PUA = "pua"              # glyph ids with no Unicode meaning of their own
+LAYER_LATIN = "latin"          # text that is already text (the Kolkata ACs)
+
+
+def _text_layer(pdf_bytes):
+    """Which of the three a part PDF is, read off the file itself.
+
+    Asked of an AC's first part. Cheap on the two typeset cases: the loop
+    stops at the first page carrying characters, which for a typeset roll is
+    page one. A scan costs a full pass over its 12-28 pages, once per AC.
+
+    LATIN vs PUA is decided here for the dispatch only. The *authority* on
+    which of the two a given part is stays in _parse_part(), per part, because
+    AC025 and AC026 are mixed -- most of their parts are Shree-Lipi Bengali
+    and a minority are not (see looks_like_shreelipi()). An AC-wide answer
+    would be wrong for those two; what is safely AC-wide is only whether
+    there is a text layer at all, and that is what the routing turns on.
+    """
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            if page.chars:
+                text = page.extract_text() or ""
+                return LAYER_PUA if _has_undecoded(text) else LAYER_LATIN
+    return LAYER_SCANNED
+
+
+
 def _page_rows(page, fallback=None):
     """Return ([cell_text x 8] per logical roll row, column geometry) for one
     page. Both come back empty if the page carries no roll table.
@@ -594,8 +708,12 @@ def _normalize(raw, table, field_label, remarks):
 class WestBengalConnector(StateConnector):
     state_id = "west_bengal"
 
-    def __init__(self, session=None):
+    def __init__(self, session=None, ocr_dir=OCR_DIR):
         self.session = session or requests.Session()
+        # Overridable so a test can point at a fixture tree; build_db
+        # instantiates the connector with no arguments, so the default is
+        # what every real build uses.
+        self.ocr_dir = ocr_dir
 
     def list_constituencies(self) -> list:
         with open(AC_META_PATH, encoding="utf-8") as f:
@@ -666,16 +784,124 @@ class WestBengalConnector(StateConnector):
         recoverable, but full_name/full_relative_name are left empty and the row
         carries a remark saying so, so that a later pass with that font's glyph
         table can fill them in from the same archived ZIP.
+
+        An AC with no text layer at all is a page scan and none of the above
+        applies to it: its rows come from a Cloud Vision response fetched
+        earlier and stored on disk, reassembled from word geometry rather than
+        extracted (see _parse_scanned and states/west_bengal_ocr.py). Which of
+        the three a download is gets decided once, up front, by _text_layer --
+        never by one path failing into the next.
+        """
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            members = sorted(zf.namelist())
+            if not members:
+                raise UnparseableRollError(
+                    f"{ac.ac_code}: the downloaded ZIP holds no part PDFs"
+                )
+            layer = _text_layer(zf.read(members[0]))
+            if layer == LAYER_SCANNED:
+                return self._parse_scanned(ac, roll_year, members)
+            if layer in (LAYER_PUA, LAYER_LATIN):
+                return self._parse_typeset(zf, members, ac, roll_year)
+            raise UnparseableRollError(
+                f"{ac.ac_code}: part PDFs are none of the three kinds this "
+                f"connector reads (got {layer!r})"
+            )
+
+    def _parse_typeset(self, zf, members, ac, roll_year):
+        """Every row of an AC whose PDFs have a text layer, Latin or PUA.
+
+        Both cases run the same extraction; which one a *part* is is decided
+        inside _parse_part(), not here -- see _text_layer().
         """
         records = []
-        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-            for member in sorted(zf.namelist()):
-                m = re.search(r"(\d+)", os.path.basename(member))
-                part_no = int(m.group(1)) if m else None
-                records.extend(
-                    self._parse_part(zf.read(member), ac, roll_year, part_no, member)
+        for member in members:
+            records.extend(
+                self._parse_part(
+                    zf.read(member), ac, roll_year, _part_no_of(member), member
                 )
+            )
         return records
+
+    def _parse_scanned(self, ac, roll_year, members):
+        """Rows for an AC whose part PDFs are page scans, read back out of
+        the Cloud Vision responses scripts/ocr_vision.py left beside the zip.
+
+        Routed to by *what the PDF is*, not by an AC list: the first part is
+        opened and asked whether it has a text layer at all. An AC list would
+        be a second place to keep in sync with the source, and a state that
+        re-scans an AC (or digitizes one properly) would have to be
+        remembered about rather than just working.
+
+        This is a fallback inside the West Bengal connector rather than a
+        connector of its own because the app selects by `(state, ac_code)`
+        and groups the picker by state -- AC287 has to be a West Bengal
+        constituency, not a member of some "west_bengal_ocr" state. Nothing
+        downstream of here can tell that these three ACs came through Vision:
+        same VoterRecord shape, same ac_code, same per-part source_url.
+        """
+        ac_dir = os.path.join(self.ocr_dir, ac.ac_code)
+        if not os.path.isdir(ac_dir):
+            raise UnparseableRollError(
+                f"{ac.ac_code} ({ac.ac_name}): the part PDFs are page scans with no "
+                f"text layer, and no OCR output is present at {ac_dir} -- run "
+                f"`make ocr-vision ACS={ac.ac_code}` first. Refusing to guess at pixels."
+            )
+
+        stems = [os.path.splitext(os.path.basename(m))[0] for m in members]
+        gaps = ocr_gaps(ac_dir, stems)
+        if gaps:
+            shown = "; ".join(gaps[:5]) + (f" ... (+{len(gaps) - 5} more)" if len(gaps) > 5 else "")
+            raise UnparseableRollError(
+                f"{ac.ac_code} ({ac.ac_name}): OCR output is incomplete for "
+                f"{len(gaps)} of {len(stems)} part(s) -- {shown}. An AC built from "
+                f"the parts that happen to be finished is short by exactly the "
+                f"electors nobody would notice missing, so it is absent instead."
+            )
+
+        records = []
+        unread = []
+        for member, stem in zip(members, stems):
+            part_no = _part_no_of(member)
+            part_dir = os.path.join(ac_dir, stem)
+            unread.extend((stem, page, why) for page, why in page_failures(part_dir))
+            for row in parse_part(part_dir):
+                records.append(self._ocr_record(row, ac, roll_year, part_no))
+        _report_unread_pages(ac, stems, unread)
+        return records
+
+    def _ocr_record(self, row, ac, roll_year, part_no):
+        """One OCR'd row as a VoterRecord.
+
+        district/ac_code/ac_name come from `ac` and part_no from the part
+        directory's name -- the cover page of a scanned part is an image like
+        every other page, so nothing here is read off the document itself.
+        That also leaves `locality` empty: this roll prints the village/town
+        on the cover, and an unread cell is left empty rather than inferred.
+
+        `age` is stored only when its token arrived entirely in Bengali
+        numerals and lands in 18..120, and is None otherwise -- on 21.5% of
+        rows, which is a parser decision and not a parse failure. Why
+        arrival script is the test is states/west_bengal_ocr.py's module
+        docstring; the row's own `remark` says which of the two rules
+        dropped it.
+        """
+        return VoterRecord(
+            state=self.state_id,
+            district=ac.district,
+            ac_code=ac.ac_code,
+            ac_name=ac.ac_name,
+            part_no=part_no,
+            serial_no=row["serial_no"],
+            local_ref=row["local_ref"],
+            full_name=row["full_name"],
+            full_relative_name=row["full_relative_name"],
+            relation_code=row["relation_code"],
+            age=row["age"],
+            gender=row["gender"],
+            roll_year=roll_year,
+            remark=row["remark"],
+        )
 
     def _parse_part(self, pdf_bytes, ac, roll_year, part_no, member):
         records, geometry = [], None

@@ -179,6 +179,17 @@ def score_fields_batch_by_group(batch_scorer, query_fields, groups, max_workers=
     `workers=1/4/-1`, vs. ~280-390ms via this grouped approach (4-8 threads) --
     identical output, confirmed via np.allclose.
 
+    **That measurement is one search at a time, and the win does not survive
+    a busy instance.** Splitting into per-group calls costs ~7% by itself;
+    the fan-out repays it only out of cores nothing else wants. On the
+    deployed shape (4 vCPU, 5 ACs, 1.65M rows) grouped runs 1.50x flat with
+    one search in flight, 1.19x with two, and **0.78x with four** -- and no
+    `max_workers` recovers that, w=1 being 0.83x there. The caller therefore
+    owns the decision: this function parallelizes when asked and is a net
+    cost when the cores are already spoken for. scripts/bench_concurrency.py
+    has the full table and rules out the two obvious culprits (pool size,
+    the GIL).
+
     groups: ordered mapping of {group_key: record_field_lists}, e.g.
     {(state, ac_code): [record_names, record_relatives]} -- one entry per
     constituency. A single-group call (e.g. a one-AC search) gets no

@@ -22,6 +22,15 @@ rather than as a bug:
   *_latin           for a non-Latin-script state, the only thing a
                     Latin-script query scores against. Blank means the rows
                     exist and match nothing anybody types.
+  age (shape)       a roll's age histogram falls from middle age onward,
+                    because mortality makes it fall. More electors in their
+                    80s than in their 70s is a misread column, not a
+                    population -- and every individual age still looks like
+                    a perfectly ordinary age, which is why nothing else
+                    catches it. West Bengal's scanned ACs shipped exactly
+                    that shape (5.89% in 80-89 against 1.85% in 70-79) with
+                    every search-quality assertion green; see
+                    states/west_bengal_ocr.py for the whole incident.
 
 None of that is visible from a row count or a spot-check of names, which is
 what a contributor naturally does. And none of it needs the closed serving
@@ -57,6 +66,30 @@ from transliteration import latin_residue, needs_latin_bridge
 # The intensive-revision cycle that produced these rolls ran 2002-2006.
 # Anything outside it is a stamping bug, not a state we haven't met.
 PLAUSIBLE_ROLL_YEARS = range(2002, 2007)
+
+# The age below which a row's age is unusable rather than wrong. Also a
+# constant in voter_search_engine (`scripts/app.py`), whose year-of-birth
+# filter uses it to spare a row instead of hiding it. Two repos, one number,
+# nothing keeping them in step across the open-source split -- change one and
+# go looking for the other.
+MIN_ELECTOR_AGE = 18
+
+# Where the age histogram's fall becomes an invariant. Below this the shape
+# is demography, not mortality, and it genuinely differs between states:
+# measured on the real built files, Haryana HR02 holds more electors in their
+# 20s than their 30s and WB AC141 holds more in their 30s than their 20s.
+# From 50 up, all six files checked fall strictly, every decade.
+AGE_MONOTONE_FROM = 50
+
+# Everything at or above this is one bucket. Past it the ages are mostly
+# extraction damage in any state, and splitting the damage into decades only
+# makes the tail noisier.
+AGE_TOP_DECADE = 100
+
+# A decade thinner than this ends the comparison rather than failing it: at a
+# few dozen rows the ordering of two adjacent decades is chance, and a check
+# that fires on noise gets switched off.
+AGE_DECADE_FLOOR = 50
 
 # How many offending rows to name in a finding. Enough to see the pattern
 # (one part? one AC? scattered?) without printing a million rows.
@@ -187,6 +220,34 @@ def _blank(column):
     return f"({column} IS NULL OR {column} = '')"
 
 
+def _decade_label(decade):
+    return f"{decade}+" if decade >= AGE_TOP_DECADE else f"{decade}-{decade + 9}"
+
+
+def _falling_tail_violations(decades):
+    """Adjacent decade pairs, from AGE_MONOTONE_FROM up, where the older one
+    holds more electors than the younger.
+
+    Absent decades are read as zero rather than skipped, so a hole doesn't
+    quietly turn a comparison into one across a gap. The walk stops at the
+    first decade thinner than AGE_DECADE_FLOOR -- past that the counts are
+    too small for their order to mean anything, and a state with almost no
+    ages at all should be reported as that, not as a broken histogram.
+    """
+    present = [d for d in decades if d >= AGE_MONOTONE_FROM]
+    if not present:
+        return []
+    violations = []
+    for younger in range(AGE_MONOTONE_FROM, max(present), 10):
+        y_count = decades.get(younger, 0)
+        if y_count < AGE_DECADE_FLOOR:
+            break
+        o_count = decades.get(younger + 10, 0)
+        if o_count > y_count:
+            violations.append((younger, younger + 10, y_count, o_count))
+    return violations
+
+
 class Tally:
     """Everything the checks need, accumulated across however many files
     hold one state's rows.
@@ -209,6 +270,7 @@ class Tally:
         self.examples = {}
         self.residue = {}
         self.unusable_age = 0
+        self.age_decades = collections.Counter()
         self.latin_on_latin_row = 0
 
     def note_examples(self, key, rows):
@@ -275,7 +337,16 @@ def tally_state(conn, state_id, tally):
                   f"AND NOT {_blank('full_name_latin')}", (state_id,))
 
     tally.unusable_age += _count(
-        conn, "state = ? AND (age IS NULL OR age < 18)", (state_id,))
+        conn, "state = ? AND (age IS NULL OR age < ?)", (state_id, MIN_ELECTOR_AGE))
+
+    # MIN() with two arguments is SQLite's scalar min, not the aggregate --
+    # it folds every age at or above AGE_TOP_DECADE into one bucket.
+    for decade, count in conn.execute(
+        "SELECT MIN(CAST(age AS INTEGER) / 10 * 10, ?), COUNT(*) FROM voters "
+        "WHERE state = ? AND age >= ? GROUP BY 1",
+        (AGE_TOP_DECADE, state_id, MIN_ELECTOR_AGE),
+    ):
+        tally.age_decades[decade] += count
 
 
 def findings_for(state_id, tally):
@@ -371,6 +442,17 @@ def findings_for(state_id, tally):
                        f"usable age. The serving app spares these from its "
                        f"year-of-birth filter rather than hiding them, so this is "
                        f"informational -- but a large share means an extraction problem")
+
+    # --- the shape of the age column, which no row-level check can see ----
+    for younger, older, y_count, o_count in _falling_tail_violations(tally.age_decades):
+        add("BLOCKER",
+            f"more electors aged {_decade_label(older)} ({o_count}) than "
+            f"{_decade_label(younger)} ({y_count}) -- a roll's age histogram "
+            f"falls from middle age up, because mortality makes it fall, so "
+            f"this is a misread age column and not a population. Every one of "
+            f"those ages still looks like an ordinary age, which is why "
+            f"nothing else here catches it. Check what the extractor does "
+            f"with the age cell before pushing this state")
 
     add("OK", f"{total} rows, roll year "
               f"{sorted(tally.roll_years)[0] if tally.roll_years else '?'}, "
