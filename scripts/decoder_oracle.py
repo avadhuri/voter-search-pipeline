@@ -994,6 +994,26 @@ LIFT_FLAG = 1.5
 # weakness on one local surname does not travel.
 MIN_ACS = 3
 
+# Printed under EITHER verdict, because both of them count the same thing and
+# neither of them counts defects. The bar above is a CONCENTRATION test --
+# "is this id wronger than the corpus baseline" -- and a concentration test
+# needs volume to have power, so MIN_CELLS is a statement about what this
+# instrument can resolve, not about how many defects the table has. In the
+# round-5 corpus nine ids are wrong in 100% of the cells they appear in and
+# clear nothing at all, because each appears in fewer than MIN_CELLS of them.
+#
+# The wording this replaces -- "NOT CONVERGED -- 2 glyph id(s) own a
+# concentration of the residual" -- reads as "there are two defects". That is
+# the same failure as acs_digitized: the data is right, and the claim about
+# how much of it there is is wrong, published in the one line a reader trusts
+# most. It is also the reassuring direction, which is the one that gets
+# believed.
+NOT_A_DEFECT_COUNT = (
+    "This counts ids that cleared the bar, not defects. A concentration "
+    "test needs\nvolume to have power, so an id that is wrong in every one "
+    f"of its fewer than\n{MIN_CELLS} cells clears nothing, and the verdict "
+    "is silent about it either way.")
+
 
 def _z(rate, base, n):
     if not n or base <= 0 or base >= 1:
@@ -1099,9 +1119,12 @@ def print_report(rep: dict) -> None:
               f"{100 * r['char_share']:>6.1f}%")
 
     print()
+    bar = (f"cells>={MIN_CELLS}, z>={Z_FLAG}, lift>={LIFT_FLAG}, "
+           f"ACs>={MIN_ACS}")
     if rep["flagged"]:
-        print(f"VERDICT: NOT CONVERGED -- {len(rep['flagged'])} glyph id(s) "
-              f"own a concentration of the residual.")
+        print(f"VERDICT: {len(rep['flagged'])} glyph id(s) above the "
+              f"concentration threshold ({bar}).")
+        print(NOT_A_DEFECT_COUNT)
         print("These are candidates for a fourth decoder round. Publishing "
               "before resolving them repeats the exact failure this check "
               "was built to catch.")
@@ -1113,11 +1136,12 @@ def print_report(rep: dict) -> None:
             for where, ours, theirs in rep["examples"].get(str(r["gid"]), [])[:4]:
                 print(f"      {where}\n        ours   {ours}\n        vision {theirs}")
     else:
-        print("VERDICT: CONVERGED, on this evidence.")
-        print(f"No glyph id clears the bar. The {100 * base:.1f}% "
-              "disagreement is spread across ids in proportion to how often "
-              "they occur, which is what OCR noise looks like and is not "
-              "what a mis-mapped id looks like.")
+        print(f"VERDICT: no glyph id is above the concentration threshold "
+              f"({bar}).")
+        print(NOT_A_DEFECT_COUNT)
+        print(f"The {100 * base:.1f}% disagreement is spread across ids in "
+              "proportion to how often they occur, which is what OCR noise "
+              "looks like and is not what a mis-mapped id looks like.")
         print(f"Bounded by the sample: {rep['cells']:,} distinct names. "
               "This test can only see a\nmis-mapping that changes enough "
               "characters for difflib to attribute it, and only\nin glyphs "
