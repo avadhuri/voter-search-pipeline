@@ -342,10 +342,17 @@ def _cell_text(chars):
     return "".join(parts).strip()
 
 
-def _boundaries(centres, data_chars):
+def _boundaries(centres, data_rows, measure_serial=True):
     """Column boundaries: the widest whitespace gutter between each pair of
     anchors, measured over the page's data rows only (title, section headings
-    and the footer span several columns and would hide every gutter)."""
+    and the footer span several columns and would hide every gutter).
+
+    The serial column is the one exception, and it is measured from the rows
+    rather than bracketed by the anchors -- see _serial_boundary. It is
+    measured only on a page that printed its own column numbers
+    (`measure_serial`); see _segment_rows for why an inherited geometry is
+    left exactly as it was."""
+    data_chars = [ch for row in data_rows for ch in row]
     bounds = [float("-inf")]
     for left, right in zip(centres, centres[1:]):
         lo, hi = int(left) + 1, int(right)
@@ -354,8 +361,62 @@ def _boundaries(centres, data_chars):
             for x in range(max(int(ch["x0"]), lo), min(int(ch["x1"]) + 1, hi) + 1):
                 occupied[x - lo] += 1
         bounds.append(lo + _widest_gap(occupied))
+    if measure_serial:
+        bounds[1] = _serial_boundary(data_rows, centres, bounds[1])
     bounds.append(float("inf"))
     return bounds
+
+
+def _serial_boundary(data_rows, centres, fallback):
+    """Where the serial column ends, measured from the serials themselves.
+
+    Every other boundary is searched between the two column numbers that
+    bracket it, which assumes the printed heading sits over its own column.
+    For column 1 that assumption fails on real parts: on AC160 part 24 page
+    22 the "1" heading centres at x=61.4 while the serial digits end at 45.9
+    and the house number starts at 76.9 -- the heading is inside the gutter
+    it is supposed to bracket. The search window (61.4, 100.5] then holds no
+    part of the real gutter's left side, so what remains of it reads as a
+    *leading* blank, which _widest_run excludes by design; the widest interior
+    run left is a 1pt gap inside the house cell, and the boundary lands at
+    96.0. Column 1 comes out as "20 87B" -- neither a serial nor blank -- and
+    _segment_rows drops every row on the page, silently: a row that never
+    reaches _record cannot carry a remark. Six pages of that one part went
+    that way (141 electors), and the same signature drops whole "List of
+    Additions" pages in other ACs, where the loss is unique electors rather
+    than restatements.
+
+    The serial needs no anchor to find: it is the leading run of a data row,
+    and _starts_with_serial has already established it is digits. So take the
+    gutter the data itself shows -- right edge of the widest serial, left edge
+    of the nearest thing after it -- and cut in the middle. Widening the
+    generic search window instead was measured and rejected: it moves every
+    boundary on the page, and on AC160 part 120 it pulled the sex letter into
+    the relative's name on 147 rows. When the two edges do not bracket a
+    gutter at all (a serial printed hard against the house number, so the
+    runs merge) there is nothing to measure and the anchor-derived boundary
+    stands.
+    """
+    left = right = None
+    for row in data_rows:
+        runs = _runs(row)
+        if len(runs) < 2:
+            return fallback
+        end = max(ch["x1"] for ch in runs[0])
+        start = min(ch["x0"] for ch in runs[1])
+        left = end if left is None else max(left, end)
+        right = start if right is None else min(right, start)
+    if left is None or right <= left:
+        return fallback
+    boundary = (left + right) / 2
+    # The serial column cannot reach past the *next* column's heading. It
+    # would if one row's serial were printed hard against its house number:
+    # the two runs merge, the run after the merged one is the name, and the
+    # gutter measured is the one before the name. The anchors are a poor
+    # guide to where a column starts but a sound bound on how far it can go.
+    if boundary >= centres[1]:
+        return fallback
+    return boundary
 
 
 def _widest_gap(occupied):
@@ -519,6 +580,38 @@ def _report_unread_pages(ac, stems, unread):
     )
 
 
+def _report_dropped_pages(ac, n_parts, dropped):
+    """Say, on the build log, which pages held rows that produced none.
+
+    A page that drops whole leaves no trace anywhere else. The rows are not
+    short, not malformed and not remarked -- they simply never happened, and
+    every count downstream agrees with every other count. That is how 141
+    electors of AC160 part 24 stayed missing through a clean build log, a
+    green search-quality suite (which drives explicit (state, ac_code) pairs,
+    so it cannot miss a page) and both freshness guards (nothing about the
+    data is stale). The count is what a repair needs: vsp #29 upserts per AC,
+    so the fix is a rebuild of the named ACs at the next patch, not of the
+    state.
+
+    Zero flagged pages is not by itself evidence of anything -- a check that
+    has never been seen to fire and a check that cannot fire print the same
+    line. tests/test_west_bengal_geometry.py holds it to the part it was
+    found in.
+    """
+    if not dropped:
+        return
+    rows = sum(n for _, _, n in dropped)
+    worst = sorted(dropped, key=lambda d: -d[2])[:5]
+    shown = "; ".join(f"part {p} p{page} ({n} rows)" for p, page, n in worst)
+    print(
+        f"  {ac.ac_code} ({ac.ac_name}): {len(dropped)} page(s) across "
+        f"{len({p for p, _, _ in dropped})} of {n_parts} part(s) held rows "
+        f"that produced nothing -- {rows} elector(s) not in this build: "
+        f"{shown}"
+        + (f" ... (+{len(dropped) - 5} more page(s))" if len(dropped) > 5 else "")
+    )
+
+
 def _part_no_of(member):
     """The part number a zip member name carries, or None.
 
@@ -565,7 +658,7 @@ def _text_layer(pdf_bytes):
 
 
 
-def _page_rows(page, fallback=None):
+def _page_rows(page, fallback=None, dropped=None):
     """Return ([cell_text x 8] per logical roll row, column geometry) for one
     page. Both come back empty if the page carries no roll table.
 
@@ -595,24 +688,50 @@ def _page_rows(page, fallback=None):
     marks = [(i, _column_numbers_of(row)) for i, row in enumerate(rows)]
     marks = [(i, c) for i, c in marks if c]
     if not marks:
-        return (list(_segment_rows(fallback, rows)) if fallback else []), fallback
+        return ((list(_segment_rows(fallback, rows, own_columns=False))
+                 if fallback else []), fallback)
 
     out = []
     ends = [i for i, _ in marks[1:]] + [len(rows)]
     for (start, centres), end in zip(marks, ends):
         if len(centres) == N_COLS:
-            out.extend(_segment_rows(centres, rows[start + 1:end]))
+            body = rows[start + 1:end]
+            got = list(_segment_rows(centres, body))
+            if not got and dropped is not None:
+                # This segment printed its own column numbers and holds rows
+                # that begin with a serial, and none of them came out. That is
+                # the one failure this module cannot notice any other way: the
+                # rows never reach _record, so there is nothing to carry a
+                # remark, nothing missing from a count, and nothing wrong with
+                # what does get stored. It is reported, never raised -- a
+                # build that stops here publishes nothing, where a build that
+                # says so publishes an AC with a named hole in it.
+                held = sum(1 for r in body if _starts_with_serial(r, centres))
+                if held:
+                    dropped.append(held)
+            out.extend(got)
             fallback = centres
     return out, fallback
 
 
-def _segment_rows(centres, body):
+def _segment_rows(centres, body, own_columns=True):
     # A data row starts with a number at the far left. Spotting them without
     # column boundaries first is what makes the gutters measurable.
     data = [r for r in body if _starts_with_serial(r, centres)]
     if not data:
         return
-    bounds = _boundaries(centres, [ch for r in data for ch in r])
+    # `own_columns` is False when this page printed no column numbers and the
+    # previous page's geometry was carried onto it. Two rows per part then sit
+    # on the SUMMARY OF ELECTORS page, which is not a table at all: its
+    # "160 , Belgachia West , General" and "2 Additions List" lines begin with
+    # a number, so the only thing keeping them out of the roll is that the
+    # inherited column 1 is too wide for the number to stand alone in it.
+    # Measuring the serial column there would publish both as electors -- 10
+    # such rows across the five AC160 parts diffed, every one of them nameless
+    # or a section heading. A page that did print its own column numbers is
+    # known to hold a table, so there is nothing to lose by reading it
+    # correctly.
+    bounds = _boundaries(centres, data, measure_serial=own_columns)
     reach = _line_height(body) * CONT_LINES
 
     out, prev_top = [], None
@@ -814,13 +933,15 @@ class WestBengalConnector(StateConnector):
         Both cases run the same extraction; which one a *part* is is decided
         inside _parse_part(), not here -- see _text_layer().
         """
-        records = []
+        records, dropped = [], []
         for member in members:
             records.extend(
                 self._parse_part(
-                    zf.read(member), ac, roll_year, _part_no_of(member), member
+                    zf.read(member), ac, roll_year, _part_no_of(member), member,
+                    dropped,
                 )
             )
+        _report_dropped_pages(ac, len(members), dropped)
         return records
 
     def _parse_scanned(self, ac, roll_year, members):
@@ -903,7 +1024,8 @@ class WestBengalConnector(StateConnector):
             remark=row["remark"],
         )
 
-    def _parse_part(self, pdf_bytes, ac, roll_year, part_no, member):
+    def _parse_part(self, pdf_bytes, ac, roll_year, part_no, member,
+                    dropped=None):
         records, geometry = [], None
         locality = None
         # Which legacy font this part is set in, decided once from the first
@@ -921,7 +1043,10 @@ class WestBengalConnector(StateConnector):
                         shreelipi = looks_like_shreelipi(text)
                 if locality is None and page.chars:
                     locality = _parse_cover_locality(page, bool(shreelipi)) or None
-                rows, geometry = _page_rows(page, geometry)
+                page_dropped = [] if dropped is not None else None
+                rows, geometry = _page_rows(page, geometry, page_dropped)
+                if page_dropped:
+                    dropped.append((part_no, page.page_number, sum(page_dropped)))
                 for cells in rows:
                     records.append(
                         self._record(

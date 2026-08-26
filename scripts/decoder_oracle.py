@@ -420,11 +420,11 @@ def _engine_for(out: Path, name: str):
 # differently.
 
 
-def _segment_cells(centres, body):
+def _segment_cells(centres, body, own_columns=True):
     data = [r for r in body if _starts_with_serial(r, centres)]
     if not data:
         return
-    bounds = _boundaries(centres, [ch for r in data for ch in r])
+    bounds = _boundaries(centres, data, measure_serial=own_columns)
     reach = _line_height(body) * CONT_LINES
 
     out, prev_top = [], None
@@ -458,7 +458,8 @@ def page_cells(page, fallback=None):
              ((i, _column_numbers_of(r)) for i, r in enumerate(rows)) if c]
 
     if not marks:
-        out = list(_segment_cells(fallback, rows)) if fallback else []
+        out = (list(_segment_cells(fallback, rows, own_columns=False))
+               if fallback else [])
     else:
         out = []
         ends = [i for i, _ in marks[1:]] + [len(rows)]
