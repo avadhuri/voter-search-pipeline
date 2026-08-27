@@ -183,7 +183,7 @@ class CsvConnector(StateConnector):
                 locality=locality,
             ))
 
-        if en_fallback_count:
+        if en_fallback_count and "elector_name_en" in fields:
             print(f"    [{self.state_id}] {ac.ac_code}: {en_fallback_count:,} rows "
                   f"missing elector_name_en (will use rule-based backfill)")
 
